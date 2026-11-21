@@ -9,13 +9,14 @@ BROWSER_HEADERS = {
 }
 
 def _download_file(url, out_path="source_video.mp4"):
-    """GitHub Private Release ya kisi bhi direct URL se video download karta hai"""
-    print(f"[MAG73] Downloading file cleanly from: {url}")
+    """GitHub private release asset ya direct URL se file download karta hai"""
+    print(f"[MAG73] Downloading file from: {url}")
     headers = dict(BROWSER_HEADERS)
+
+    # Agar file GitHub Release API se aa rahi hai toh GitHub Token lagao
     if "api.github.com" in url:
         gh_token = os.getenv("GITHUB_TOKEN", "").strip()
-        if gh_token:
-            headers["Authorization"] = f"Bearer {gh_token}"
+        headers["Authorization"] = f"Bearer {gh_token}"
         headers["Accept"] = "application/octet-stream"
 
     with requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=180) as r:
@@ -24,6 +25,7 @@ def _download_file(url, out_path="source_video.mp4"):
             for chunk in r.iter_content(chunk_size=1024 * 1024):
                 if chunk:
                     f.write(chunk)
+
     if not os.path.exists(out_path) or os.path.getsize(out_path) < 10000:
         raise RuntimeError("Downloaded file is empty or invalid!")
     print(f"[MAG73] Download complete! Size: {os.path.getsize(out_path) / (1024*1024):.2f} MB")
@@ -44,8 +46,7 @@ def _download_via_cobalt_fallback(source_url, out_path="source_video.mp4"):
         try:
             res = requests.post(api, json={"url": source_url, "videoQuality": "720"}, headers=headers, timeout=25)
             if res.status_code == 200:
-                data = res.json()
-                dl_url = data.get("url")
+                dl_url = res.json().get("url")
                 if dl_url:
                     _download_file(dl_url, out_path)
                     return True
@@ -54,7 +55,7 @@ def _download_via_cobalt_fallback(source_url, out_path="source_video.mp4"):
     return False
 
 def fetch_media(source_url, mode="vod"):
-    print(f"[MAG73 Input Engine] Starting in {mode.upper()} mode for: {source_url}")
+    print(f"[MAG73 Input Engine] Starting in {mode.upper()} mode...")
 
     if mode == "upload":
         _download_file(source_url, "source_video.mp4")
@@ -90,10 +91,9 @@ def fetch_media(source_url, mode="vod"):
     result = subprocess.run(vid_cmd, capture_output=True, text=True)
 
     if result.returncode != 0 or not os.path.exists("source_video.mp4"):
-        print("[MAG73] yt-dlp blocked by YouTube, switching to fallback downloader...")
         success = _download_via_cobalt_fallback(source_url, "source_video.mp4")
         if not success:
-            raise RuntimeError("YouTube blocked datacenter IP. Use Gallery Upload mode or add YT_COOKIES!")
+            raise RuntimeError("YouTube blocked datacenter IP. Add YT_COOKIES secret or use Gallery Upload.")
 
     chat_spikes = extract_chat_hype("source_video.live_chat.json")
     return "source_video.mp4", chat_spikes
