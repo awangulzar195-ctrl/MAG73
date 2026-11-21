@@ -1,0 +1,5 @@
+google-genai
+requests
+yt-dlp
+librosa
+soundfile
