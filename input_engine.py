@@ -9,9 +9,16 @@ BROWSER_HEADERS = {
 }
 
 def _download_file(url, out_path="source_video.mp4"):
-    """Browser User-Agent ke saath file download karta hai taaki 403 Forbidden na aaye"""
+    """GitHub Private Release ya kisi bhi direct URL se video download karta hai"""
     print(f"[MAG73] Downloading file cleanly from: {url}")
-    with requests.get(url, headers=BROWSER_HEADERS, stream=True, allow_redirects=True, timeout=120) as r:
+    headers = dict(BROWSER_HEADERS)
+    if "api.github.com" in url:
+        gh_token = os.getenv("GITHUB_TOKEN", "").strip()
+        if gh_token:
+            headers["Authorization"] = f"Bearer {gh_token}"
+        headers["Accept"] = "application/octet-stream"
+
+    with requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=180) as r:
         r.raise_for_status()
         with open(out_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=1024 * 1024):
@@ -22,7 +29,6 @@ def _download_file(url, out_path="source_video.mp4"):
     print(f"[MAG73] Download complete! Size: {os.path.getsize(out_path) / (1024*1024):.2f} MB")
 
 def _download_via_cobalt_fallback(source_url, out_path="source_video.mp4"):
-    """Agar YouTube GitHub IP ko bot-block kare, toh bina cookies ke Cobalt API se video nikaalta hai"""
     print("[MAG73 Fallback] Trying Cobalt public API bypass...")
     instances = [
         "https://api.cobalt.tools/",
@@ -41,7 +47,6 @@ def _download_via_cobalt_fallback(source_url, out_path="source_video.mp4"):
                 data = res.json()
                 dl_url = data.get("url")
                 if dl_url:
-                    print(f"[MAG73 Fallback] Downloading from: {api}")
                     _download_file(dl_url, out_path)
                     return True
         except Exception as e:
@@ -61,7 +66,6 @@ def fetch_media(source_url, mode="vod"):
         with open("cookies.txt", "w", encoding="utf-8") as cf:
             cf.write(cookies_env)
         cookie_args = ["--cookies", "cookies.txt"]
-        print("[MAG73] Using YT_COOKIES authentication!")
 
     chat_cmd = [
         "yt-dlp", "--skip-download", "--write-subs", "--sub-langs", "live_chat",
@@ -89,21 +93,16 @@ def fetch_media(source_url, mode="vod"):
         print("[MAG73] yt-dlp blocked by YouTube, switching to fallback downloader...")
         success = _download_via_cobalt_fallback(source_url, "source_video.mp4")
         if not success:
-            raise RuntimeError(
-                "YouTube blocked datacenter IP. Add YT_COOKIES secret in GitHub OR use Gallery Upload mode!"
-            )
+            raise RuntimeError("YouTube blocked datacenter IP. Use Gallery Upload mode or add YT_COOKIES!")
 
     chat_spikes = extract_chat_hype("source_video.live_chat.json")
     return "source_video.mp4", chat_spikes
 
 def extract_chat_hype(chat_file):
     if not os.path.exists(chat_file):
-        print("[MAG73] No live chat found, using audio + AI vision only.")
         return []
-
     buckets = {}
     hype_words = ["op", "wtf", "lol", "omg", "clip", "💀", "😂", "🔥", "bhai", "arey", "gg", "clutch"]
-
     with open(chat_file, "r", encoding="utf-8") as f:
         for line in f:
             try:
@@ -116,6 +115,5 @@ def extract_chat_hype(chat_file):
                 buckets[sec_bucket] = buckets.get(sec_bucket, 0) + score
             except Exception:
                 continue
-
     sorted_spikes = sorted(buckets.items(), key=lambda x: x[1], reverse=True)
     return [t for t, score in sorted_spikes[:15]]
