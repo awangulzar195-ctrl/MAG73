@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_url:
-        description: 'YouTube Video / Live Stream Link or Uploaded Video URL'
+        description: 'YouTube Video / Live Stream Link or GitHub Asset URL'
         required: true
         type: string
       input_mode:
@@ -45,6 +45,7 @@ jobs:
 
       - name: Run MAG73 Multi-AI Council & Pro Editor
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           YT_COOKIES: ${{ secrets.YT_COOKIES }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || secrets.GROK_API_KEY }}
