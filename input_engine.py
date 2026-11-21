@@ -1,8 +1,25 @@
 import os
 import json
 import subprocess
-import urllib.request
 import requests
+
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "*/*"
+}
+
+def _download_file(url, out_path="source_video.mp4"):
+    """Browser User-Agent ke saath file download karta hai taaki 403 Forbidden na aaye"""
+    print(f"[MAG73] Downloading file cleanly from: {url}")
+    with requests.get(url, headers=BROWSER_HEADERS, stream=True, allow_redirects=True, timeout=120) as r:
+        r.raise_for_status()
+        with open(out_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+    if not os.path.exists(out_path) or os.path.getsize(out_path) < 10000:
+        raise RuntimeError("Downloaded file is empty or invalid!")
+    print(f"[MAG73] Download complete! Size: {os.path.getsize(out_path) / (1024*1024):.2f} MB")
 
 def _download_via_cobalt_fallback(source_url, out_path="source_video.mp4"):
     """Agar YouTube GitHub IP ko bot-block kare, toh bina cookies ke Cobalt API se video nikaalta hai"""
@@ -15,7 +32,7 @@ def _download_via_cobalt_fallback(source_url, out_path="source_video.mp4"):
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0"
+        "User-Agent": BROWSER_HEADERS["User-Agent"]
     }
     for api in instances:
         try:
@@ -25,9 +42,8 @@ def _download_via_cobalt_fallback(source_url, out_path="source_video.mp4"):
                 dl_url = data.get("url")
                 if dl_url:
                     print(f"[MAG73 Fallback] Downloading from: {api}")
-                    urllib.request.urlretrieve(dl_url, out_path)
-                    if os.path.exists(out_path) and os.path.getsize(out_path) > 50000:
-                        return True
+                    _download_file(dl_url, out_path)
+                    return True
         except Exception as e:
             print(f"[MAG73 Fallback] {api} failed: {e}")
     return False
@@ -36,11 +52,9 @@ def fetch_media(source_url, mode="vod"):
     print(f"[MAG73 Input Engine] Starting in {mode.upper()} mode for: {source_url}")
 
     if mode == "upload":
-        print("[MAG73] Downloading uploaded video file...")
-        urllib.request.urlretrieve(source_url, "source_video.mp4")
+        _download_file(source_url, "source_video.mp4")
         return "source_video.mp4", []
 
-    # Agar YT_COOKIES secret saved hai toh cookies.txt banao
     cookies_env = os.getenv("YT_COOKIES", "").strip()
     cookie_args = []
     if cookies_env:
@@ -49,7 +63,6 @@ def fetch_media(source_url, mode="vod"):
         cookie_args = ["--cookies", "cookies.txt"]
         print("[MAG73] Using YT_COOKIES authentication!")
 
-    # Step 1: Live Chat nikaalne ki koshish (non-blocking)
     chat_cmd = [
         "yt-dlp", "--skip-download", "--write-subs", "--sub-langs", "live_chat",
         "--extractor-args", "youtube:player_client=ios,mweb",
@@ -57,7 +70,6 @@ def fetch_media(source_url, mode="vod"):
     ] + cookie_args
     subprocess.run(chat_cmd, check=False)
 
-    # Step 2: Video download via yt-dlp (ios,mweb client)
     vid_cmd = [
         "yt-dlp",
         "--extractor-args", "youtube:player_client=ios,mweb",
@@ -73,7 +85,6 @@ def fetch_media(source_url, mode="vod"):
 
     result = subprocess.run(vid_cmd, capture_output=True, text=True)
 
-    # Agar YouTube ne phir bhi bot-block kiya toh Cobalt fallback chalao
     if result.returncode != 0 or not os.path.exists("source_video.mp4"):
         print("[MAG73] yt-dlp blocked by YouTube, switching to fallback downloader...")
         success = _download_via_cobalt_fallback(source_url, "source_video.mp4")
