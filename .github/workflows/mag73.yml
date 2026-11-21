@@ -1,0 +1,69 @@
+name: MAG73 Super-AI Viral Clipper
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_url:
+        description: 'YouTube Video / Live Stream Link or Uploaded Video URL'
+        required: true
+        type: string
+      input_mode:
+        description: 'Mode: live, vod, or upload'
+        required: true
+        default: 'vod'
+        type: string
+      edit_style:
+        description: 'Style: auto, aura, funny, documentary, or casual'
+        required: true
+        default: 'auto'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  clip-and-edit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout MAG73 Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install FFmpeg & Fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Install Python Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run MAG73 Multi-AI Council & Pro Editor
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SOURCE_URL: ${{ github.event.inputs.source_url }}
+          INPUT_MODE: ${{ github.event.inputs.input_mode }}
+          EDIT_STYLE: ${{ github.event.inputs.edit_style }}
+        run: python main.py
+
+      - name: Upload Ready Shorts as Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAG73-Viral-Shorts
+          path: output_clips/
+
+      - name: Publish Clips to GitHub Release (For App Direct Access)
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: clips-${{ github.run_number }}
+          name: MAG73 Clips Batch #${{ github.run_number }}
+          files: output_clips/*
