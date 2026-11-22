@@ -1,11 +1,30 @@
 import os
 import re
 import subprocess
+import requests
 
-FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FALLBACK_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+PRO_FONT_FILE = "Montserrat-ExtraBold.ttf"
+PRO_FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-ExtraBold.ttf"
+
+def _ensure_pro_font():
+    """Pro Montserrat-ExtraBold font download karta hai taaki captions studio-grade lagein"""
+    if not os.path.exists(PRO_FONT_FILE):
+        try:
+            r = requests.get(PRO_FONT_URL, timeout=15)
+            if r.status_code == 200 and len(r.content) > 50000:
+                with open(PRO_FONT_FILE, "wb") as f:
+                    f.write(r.content)
+                print("[MAG73 Font] Loaded Montserrat-ExtraBold!")
+        except Exception as e:
+            print(f"[MAG73 Font] Using fallback font: {e}")
+
+    if os.path.exists(PRO_FONT_FILE):
+        return PRO_FONT_FILE, "Montserrat ExtraBold"
+    return FALLBACK_FONT, "DejaVu Sans"
 
 def _fetch_audio(query, out_prefix):
-    """Cookies ke saath YouTube se BGM/SFX download karta hai taaki fail na ho"""
+    """Cookies + JS solver ke saath YouTube se BGM/SFX cleanly download karta hai"""
     out_file = f"{out_prefix}.mp3"
     if os.path.exists(out_file) or not query:
         return out_file if os.path.exists(out_file) else None
@@ -13,8 +32,9 @@ def _fetch_audio(query, out_prefix):
     q = query if query.startswith("ytsearch") else f"ytsearch1:{query}"
     cmd = [
         "yt-dlp", "-x", "--audio-format", "mp3",
-        "--max-filesize", "12M",
+        "--max-filesize", "15M",
         "--js-runtimes", "node",
+        "--remote-components", "ejs:github",
         "-o", f"{out_prefix}.%(ext)s"
     ]
     if os.path.exists("cookies.txt"):
@@ -22,7 +42,10 @@ def _fetch_audio(query, out_prefix):
     cmd.append(q)
 
     subprocess.run(cmd, check=False)
-    return out_file if os.path.exists(out_file) else None
+    if os.path.exists(out_file):
+        print(f"[MAG73 Audio] Ready: {out_file}")
+        return out_file
+    return None
 
 def _format_ass_time(seconds):
     h = int(seconds // 3600)
@@ -34,8 +57,8 @@ def _format_ass_time(seconds):
 def _ascii_only(text):
     return re.sub(r"[^A-Za-z0-9 !?@#.,'-]", "", text).strip()
 
-def generate_captions(words, clip_start, clip_end, time_offset, color_hex, ass_path):
-    """Clean, professional Hinglish/English captions (pop animation, crisp outline)"""
+def generate_captions(words, clip_start, clip_end, time_offset, color_hex, font_name, ass_path):
+    """Clean, bold pro Hinglish/English captions with smooth pop animation"""
     clip_words = [w for w in words if w.get("start", 0) >= clip_start and w.get("end", 0) <= clip_end]
     if not clip_words:
         return None
@@ -47,7 +70,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,DejaVu Sans,76,{color_hex},&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,1,0,1,5,2,2,60,60,340,1
+Style: Default,{font_name},82,{color_hex},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,1,0,1,6,3,2,60,60,360,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -57,10 +80,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         chunk = clip_words[i:i+2]
         w_start = max(0, (chunk[0]["start"] - clip_start) + time_offset)
         w_end = max(w_start + 0.25, (chunk[-1]["end"] - clip_start) + time_offset)
-        clean_txt = _ascii_only(" ".join(w.get("word", "").strip() for w in chunk))
+        clean_txt = _ascii_only(" ".join(w.get("word", "").strip().upper() for w in chunk))
         if not clean_txt:
             continue
-        anim = r"{\fscx92\fscy92\t(0,60,\fscx104\fscy104)\t(60,120,\fscx100\fscy100)}" + clean_txt
+        anim = r"{\fscx88\fscy88\t(0,65,\fscx106\fscy106)\t(65,130,\fscx100\fscy100)}" + clean_txt
         events.append(f"Dialogue: 0,{_format_ass_time(w_start)},{_format_ass_time(w_end)},Default,,0,0,0,,{anim}")
 
     if not events:
@@ -70,7 +93,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return ass_path
 
 def _build_crop_filter(focus_x):
-    """Subject ko frame mein rakhne ke liye smart left/center/right 9:16 crop"""
+    """Main subject ko frame mein rakhne ke liye smart 9:16 framing"""
     if focus_x == "left":
         x_expr = "(iw-1080)*0.18"
     elif focus_x == "right":
@@ -80,6 +103,8 @@ def _build_crop_filter(focus_x):
     return f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:{x_expr}:(ih-1920)/2,setsar=1"
 
 def render_pro_short(video_path, clip_data, word_timestamps, index):
+    font_path, font_name = _ensure_pro_font()
+
     start = float(clip_data.get("start", 0))
     end = float(clip_data.get("end", start + 25))
     duration = max(6.0, min(55.0, end - start))
@@ -87,11 +112,11 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     mood = re.sub(r"[^a-zA-Z0-9_]", "", str(clip_data.get("mood", "pro")))[:16] or "pro"
     focus_x = str(clip_data.get("focus_x", "center")).lower()
     title_text = _ascii_only(str(clip_data.get("title_text", ""))).upper()
-    caption_color = str(clip_data.get("caption_color", "&H00FFFFFF"))
+    caption_color = str(clip_data.get("caption_color", "&H0000FFFF"))
     hook_start = clip_data.get("visual_hook_start", None)
 
     output_file = f"MAG73_{mood.upper()}_Clip_{index + 1}.mp4"
-    bgm_file = _fetch_audio(clip_data.get("bgm_query", ""), f"bgm_{index}")
+    bgm_file = _fetch_audio(clip_data.get("bgm_query", "ytsearch1:trending phonk beat no copyright"), f"bgm_{index}")
     sfx_file = _fetch_audio(clip_data.get("sfx_query", ""), f"sfx_{index}")
 
     # Step 1: Optional 2-second Visual Hook prepend
@@ -128,34 +153,42 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         except Exception as e:
             print(f"[MAG73 Hook] Skipped visual hook: {e}")
 
-    ass_file = generate_captions(word_timestamps, start, start + duration, caption_offset, caption_color, f"cap_{index}.ass")
+    ass_file = generate_captions(word_timestamps, start, start + duration, caption_offset, caption_color, font_name, f"cap_{index}.ass")
 
-    # Step 2: Clean Pro Visual Filter (No fazool effects/filters!)
+    # Step 2: Clean Pro Visual Filter (No ugly filters or dirty boxes)
     vf = [
         _build_crop_filter(focus_x),
         "eq=contrast=1.06:saturation=1.08"
     ]
     if title_text:
         vf.append(
-            f"drawtext=fontfile={FONT_PATH}:text='{title_text}':fontcolor=white:fontsize=52:"
-            f"borderw=4:bordercolor=black:x=(w-text_w)/2:y=160:enable='between(t,0,3.2)'"
+            f"drawtext=fontfile={font_path}:text='{title_text}':fontcolor=white:fontsize=54:"
+            f"borderw=5:bordercolor=black:shadowx=2:shadowy=2:x=(w-text_w)/2:y=160:enable='between(t,0,3.2)'"
         )
     if ass_file and os.path.exists(ass_file):
-        vf.append(f"ass={ass_file}")
+        vf.append(f"ass={ass_file}:fontsdir=.")
 
     vf_filter = ",".join(vf)
     cmd = ["ffmpeg", "-y", "-ss", str(working_start), "-t", str(working_dur), "-i", working_input]
 
+    # normalize=0 keeps both Voice and BGM/SFX punchy and clearly audible!
     if bgm_file and sfx_file:
         cmd.extend(["-stream_loop", "-1", "-i", bgm_file, "-i", sfx_file])
         fc = (
             f"[0:v]{vf_filter}[v];"
-            f"[0:a]volume=1.15[voice];[1:a]volume=0.14[bgm];[2:a]atrim=0:1.8,volume=0.45[sfx];"
-            f"[voice][bgm][sfx]amix=inputs=3:duration=first:dropout_transition=2[a]"
+            f"[0:a]volume=1.15[voice];"
+            f"[1:a]volume=0.26[bgm];"
+            f"[2:a]atrim=0:1.8,volume=0.55[sfx];"
+            f"[voice][bgm][sfx]amix=inputs=3:duration=first:dropout_transition=2:normalize=0[a]"
         )
     elif bgm_file:
         cmd.extend(["-stream_loop", "-1", "-i", bgm_file])
-        fc = f"[0:v]{vf_filter}[v];[0:a]volume=1.15[voice];[1:a]volume=0.14[bgm];[voice][bgm]amix=inputs=2:duration=first[a]"
+        fc = (
+            f"[0:v]{vf_filter}[v];"
+            f"[0:a]volume=1.15[voice];"
+            f"[1:a]volume=0.26[bgm];"
+            f"[voice][bgm]amix=inputs=2:duration=first:normalize=0[a]"
+        )
     else:
         fc = f"[0:v]{vf_filter}[v];[0:a]anull[a]"
 
@@ -166,10 +199,10 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         output_file
     ])
 
-    print(f"[MAG73 Fast Pro Editor] Rendering {output_file}...")
+    print(f"[MAG73 Pro Editor] Rendering {output_file}...")
     subprocess.run(cmd, check=True)
 
-    # Step 3: Save Cover Thumbnail (.jpg) in output_clips/ for App My Clips Page
+    # Step 3: Save Cover Thumbnail (.jpg) in output_clips/
     os.makedirs("output_clips", exist_ok=True)
     cover_path = os.path.join("output_clips", output_file.replace(".mp4", ".jpg"))
     subprocess.run([
