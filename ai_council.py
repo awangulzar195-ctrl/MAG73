@@ -43,8 +43,8 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
         detected_lang = data.get("language", "unknown")
         print(f"[MAG73 Audio] Detected Language: {detected_lang} | Words: {len(words)}")
 
-        # Agar Hindi/Urdu/non-Latin script aayi hai toh words ko 100% accurate Roman Hinglish mein transliterate karo
-        if words and re.search(r"[^\x00-\x7F]", text):
+        # Hindi/Urdu ya koi bhi non-English script ko 100% accurate Roman Hinglish mein badlo
+        if words and (detected_lang in ("hi", "ur", "hindi", "urdu") or re.search(r"[^\x00-\x7F]", text)):
             words = _convert_words_to_hinglish(words)
             text = " ".join(w.get("word", "") for w in words)
 
@@ -54,16 +54,15 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
         return "", [], "unknown"
 
 def _convert_words_to_hinglish(words):
-    """Spoken Hindi/Urdu words ko exact same count aur timestamps ke saath clean Roman Hinglish mein badalta hai"""
     try:
         raw_list = [w.get("word", "").strip() for w in words]
-        # Process in chunks of 120 words so alignment stays 100% accurate
         converted_all = []
-        for i in range(0, len(raw_list), 120):
-            chunk = raw_list[i:i + 120]
+        for i in range(0, len(raw_list), 100):
+            chunk = raw_list[i:i + 100]
             prompt = (
-                "Transliterate each word in this JSON array into natural Roman Hinglish (using ONLY English A-Z letters). "
-                "Keep English words as-is. Return ONLY a JSON array of the EXACT SAME LENGTH.\n"
+                "Transliterate each word in this JSON array into natural, casual Roman Hinglish "
+                "(e.g. 'भाई' -> 'Bhai', 'क्या' -> 'kya', 'हो' -> 'ho'). Use ONLY English A-Z letters. "
+                "Keep English words unchanged. Return ONLY a JSON array of the EXACT SAME LENGTH.\n"
                 f"Input: {json.dumps(chunk, ensure_ascii=False)}"
             )
             res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
@@ -96,15 +95,17 @@ def _wait_for_gemini_file(video_file):
 def _expert_gemini_vision(video_file, transcript_text, audience_signals):
     try:
         prompt = f"""
-        You are the VISUAL & VIRAL DIRECTOR in MAG73.
+        You are the STRICT VIRAL DIRECTOR in MAG73.
         Analyze the video + audience signals:
         - Live Chat Spikes (seconds): {audience_signals.get('chat_spikes', [])}
         - Top Comment Timestamps (seconds): {audience_signals.get('comment_timestamps', [])}
         - Top Viewer Comments: {audience_signals.get('top_comments', [])[:12]}
 
-        Find EVERY genuinely entertaining, viral, or unexpected moment (15-55 seconds each).
-        Also note where the main subject/speaker is positioned horizontally: "left", "center", or "right".
-        Return JSON list: [{{"start": int, "end": int, "score": 1-100, "focus_x": "center", "reason": "..."}}]
+        CRITICAL RULE: Do NOT chop the entire video into clips!
+        Pick ONLY the truly PEAK, HYPE, HILARIOUS, or UNEXPECTED moments (score >= 85/100).
+        Skip all normal talking, waiting, or average parts.
+        Also note where the main subject is horizontally: "left", "center", or "right".
+        Return JSON list: [{{"start": int, "end": int, "score": 85-100, "focus_x": "center", "reason": "..."}}]
         Transcript: {transcript_text[:10000]}
         """
         res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=[video_file, prompt])
@@ -117,7 +118,8 @@ def _expert_groq_dialogue(transcript_text, audience_signals):
         return "[]"
     try:
         prompt = f"""
-        Find ALL best dialogues, funny moments, roasts, or moments viewers are talking about in comments/chat.
+        Pick ONLY the absolute PEAK hype/funny/shocking dialogue moments (score >= 85/100).
+        Do NOT include average parts of the video.
         Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
         Top Comments: {audience_signals.get('top_comments', [])[:10]}
         Chat Spikes: {audience_signals.get('chat_spikes', [])}
@@ -161,44 +163,52 @@ def run_super_ai_council(video_path, audience_signals):
 
     judge_prompt = f"""
     You are the CHIEF PRO VIDEO EDITOR of MAG73.
-    User style preference: "{style_pref}" (if "auto", choose the cleanest, most fitting pro edit for each clip).
+    User style preference: "{style_pref}"
     Detected Language: {detected_lang}
     Vision Report: {vision_report}
     Dialogue Report: {dialogue_report}
     Audience Signals: {json.dumps(audience_signals)[:3000]}
 
-    RULES:
-    1. Extract ALL truly viral/entertaining clips (15-55s each). Do NOT pad with boring clips.
-    2. NO fazool effects, NO ugly filters, NO spammy text. Keep edits clean and professional!
-    3. Visual Hook: If the clip has a hilarious/surprising 2-second peak moment near the middle/end, set "visual_hook_start" (in seconds from original video) so we can tease it at the start. Otherwise set null.
-    4. BGM & SFX: Pick a real, fitting no-copyright song query ("bgm_query") and subtle SFX ("sfx_query") ONLY if it improves the clip.
-    5. Title: Short, clean 2-4 word title ("title_text") in English/Hinglish (ASCII only), or "" if not needed.
-    6. Subject Framing: Set "focus_x" to "left", "center", or "right" where the main person/action is.
+    STRICT RULES:
+    1. ONLY select genuinely PEAK hype/viral moments (score >= 85). NEVER chop the whole video into 10 clips!
+       If a video only has 1 or 2 real hype moments, return ONLY 1 or 2. If it has 4 real bangers, return 4.
+    2. Each clip must be 15 to 50 seconds, tightly cut with zero boring dead air.
+    3. Visual Hook: If the clip has a hilarious/surprising 4-second peak near the end, set "visual_hook_start" (seconds). Otherwise null.
+    4. BGM & SFX: Always pick a great, fitting no-copyright BGM query ("bgm_query") matching the clip's energy (e.g. "ytsearch1:dark phonk beat no copyright", "ytsearch1:funny upbeat background music no copyright", "ytsearch1:intense suspense music no copyright").
+    5. Title: Short punchy 2-4 word title ("title_text") in English/Hinglish (ASCII only), or "" if not needed.
+    6. Subject Framing: Set "focus_x" to "left", "center", or "right".
 
     Return ONLY valid JSON array:
     [
       {{
         "start": 10,
-        "end": 38,
-        "mood": "clean_pro",
+        "end": 35,
+        "score": 92,
+        "mood": "hype_pro",
         "focus_x": "center",
-        "title_text": "UNEXPECTED ENDING",
-        "visual_hook_start": 33,
-        "bgm_query": "ytsearch1:chill suspense beat no copyright",
-        "sfx_query": "ytsearch1:subtle whoosh sound effect",
-        "caption_color": "&H00FFFFFF"
+        "title_text": "POWER GAYA BHAI",
+        "visual_hook_start": 31,
+        "bgm_query": "ytsearch1:suspense dark beat no copyright",
+        "sfx_query": "ytsearch1:vine boom sound effect",
+        "caption_color": "&H0000FFFF"
       }}
     ]
     """
     final_res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=judge_prompt)
-    clips = _clean_json(final_res.text)
+    raw_clips = _clean_json(final_res.text)
+
+    # Hard filter: sirf score >= 85 wale hype clips rakho
+    clips = [c for c in raw_clips if int(c.get("score", 90)) >= 85]
+    if not clips and raw_clips:
+        clips = [max(raw_clips, key=lambda x: int(x.get("score", 0)))]
     if not clips:
         clips = [{
-            "start": 0, "end": 25, "mood": "clean_pro",
+            "start": 0, "end": 25, "score": 88, "mood": "hype_pro",
             "focus_x": "center", "title_text": "",
             "visual_hook_start": None,
-            "bgm_query": "ytsearch1:trending lofi beat no copyright",
-            "sfx_query": "", "caption_color": "&H00FFFFFF"
+            "bgm_query": "ytsearch1:trending phonk beat no copyright",
+            "sfx_query": "", "caption_color": "&H0000FFFF"
         }]
-    print(f"[MAG73 Pro Editor] Approved {len(clips)} clean viral clips!")
+
+    print(f"[MAG73 Pro Editor] Approved ONLY {len(clips)} peak hype clip(s)!")
     return clips, word_timestamps
