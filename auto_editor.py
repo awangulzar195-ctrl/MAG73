@@ -4,27 +4,27 @@ import subprocess
 import requests
 
 FALLBACK_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-PRO_FONT_FILE = "Montserrat-ExtraBold.ttf"
-PRO_FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-ExtraBold.ttf"
+PRO_FONT_FILE = "Poppins-Black.ttf"
+PRO_FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Black.ttf"
 
 def _ensure_pro_font():
-    """Pro Montserrat-ExtraBold font download karta hai"""
+    """Thick, viral-style Poppins-Black font download karta hai"""
     if not os.path.exists(PRO_FONT_FILE):
         try:
             r = requests.get(PRO_FONT_URL, timeout=15)
             if r.status_code == 200 and len(r.content) > 50000:
                 with open(PRO_FONT_FILE, "wb") as f:
                     f.write(r.content)
-                print("[MAG73 Font] Loaded Montserrat-ExtraBold!")
+                print("[MAG73 Font] Loaded Poppins-Black!")
         except Exception as e:
             print(f"[MAG73 Font] Using fallback font: {e}")
 
     if os.path.exists(PRO_FONT_FILE):
-        return PRO_FONT_FILE, "Montserrat ExtraBold"
+        return PRO_FONT_FILE, "Poppins Black"
     return FALLBACK_FONT, "DejaVu Sans"
 
 def _fetch_audio(query, out_prefix):
-    """Sirf tabhi BGM/SFX download karta hai jab query non-empty ho"""
+    """Sirf tabhi BGM/SFX download karta hai jab AI ne non-empty query di ho"""
     query = (query or "").strip()
     if not query:
         return None
@@ -62,13 +62,13 @@ def _ascii_only(text):
     return re.sub(r"[^A-Za-z0-9 !?@#,.-]", "", text).strip()
 
 def generate_captions(words, clip_start, clip_end, color_hex, font_name, is_split, ass_path):
-    """Clean, accurate Hinglish/English captions (Split-screen mein center seam par)"""
+    """Bold, punchy Hinglish/English captions (Split-screen mein center border par)"""
     clip_words = [w for w in words if w.get("start", 0) >= clip_start and w.get("end", 0) <= clip_end]
     if not clip_words:
         return None
 
-    margin_v = 900 if is_split else 360
-    font_size = 76 if is_split else 82
+    margin_v = 910 if is_split else 340
+    font_size = 78 if is_split else 88
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -77,7 +77,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},{font_size},{color_hex},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,1,0,1,6,3,2,60,60,{margin_v},1
+Style: Default,{font_name},{font_size},{color_hex},&H00FFFFFF,&H00000000,&H99000000,-1,0,0,0,100,100,0,0,1,7,4,2,55,55,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -90,7 +90,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         clean_txt = _ascii_only(" ".join(w.get("word", "").strip().upper() for w in chunk))
         if not clean_txt:
             continue
-        anim = r"{\fscx88\fscy88\t(0,65,\fscx106\fscy106)\t(65,130,\fscx100\fscy100)}" + clean_txt
+        anim = r"{\fscx85\fscy85\t(0,55,\fscx108\fscy108)\t(55,115,\fscx100\fscy100)}" + clean_txt
         events.append(f"Dialogue: 0,{_format_ass_time(w_start)},{_format_ass_time(w_end)},Default,,0,0,0,,{anim}")
 
     if not events:
@@ -99,25 +99,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         f.write(header + "\n".join(events))
     return ass_path
 
-def _build_layout_graph(layout, facecam_pos, focus_x):
-    """
-    split_facecam: Top 1080x960 Gameplay + Bottom 1080x960 Real Human Facecam
-    full_vertical: Clean 9:16 framing
-    """
-    if layout == "split_facecam" and facecam_pos in ("bottom_right", "bottom_left", "top_right", "top_left"):
-        if facecam_pos == "bottom_right":
-            cx, cy = "iw*0.72", "ih*0.66"
-        elif facecam_pos == "bottom_left":
-            cx, cy = "0", "ih*0.66"
-        elif facecam_pos == "top_right":
-            cx, cy = "iw*0.72", "0"
-        else:
-            cx, cy = "0", "0"
+def _parse_facecam_box(box):
+    """Validates normalized [x, y, w, h] facecam box from Gemini Vision"""
+    if not isinstance(box, list) or len(box) != 4:
+        return None
+    try:
+        x, y, w, h = [float(v) for v in box]
+        if w < 0.08 or h < 0.08 or w > 0.65 or h > 0.65:
+            return None
+        x = max(0.0, min(1.0 - w, x))
+        y = max(0.0, min(1.0 - h, y))
+        return (x, y, w, h)
+    except Exception:
+        return None
 
+def _build_layout_graph(facecam_box, focus_x):
+    """
+    Agar valid real human facecam_box hai -> Top 1080x960 Gameplay + Bottom 1080x960 Exact Facecam
+    Agar facecam_box None hai -> Clean 1080x1920 full vertical framing
+    """
+    if facecam_box is not None:
+        fx, fy, fw, fh = facecam_box
         return (
             f"[0:v]split=2[game_src][cam_src];"
             f"[game_src]scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,setsar=1[top];"
-            f"[cam_src]crop=iw*0.28:ih*0.34:{cx}:{cy},scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,setsar=1[bot];"
+            f"[cam_src]crop=iw*{fw:.4f}:ih*{fh:.4f}:iw*{fx:.4f}:ih*{fy:.4f},"
+            f"scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,setsar=1[bot];"
             f"[top][bot]vstack=inputs=2[base];"
         )
 
@@ -133,17 +140,16 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     font_path, font_name = _ensure_pro_font()
 
     start = float(clip_data.get("start", 0))
-    end = float(clip_data.get("end", start + 25))
-    duration = max(8.0, min(55.0, end - start))
+    end = float(clip_data.get("end", start + 22))
+    duration = max(6.0, min(38.0, end - start))
 
     edit_type = re.sub(r"[^a-zA-Z0-9_]", "", str(clip_data.get("edit_type", "clean"))).lower() or "clean"
-    layout = str(clip_data.get("layout", "full_vertical")).lower()
-    facecam_pos = str(clip_data.get("facecam_pos", "none")).lower()
+    facecam_box = _parse_facecam_box(clip_data.get("facecam_box", None))
     focus_x = str(clip_data.get("focus_x", "center")).lower()
     title_text = _ascii_only(str(clip_data.get("title_text", ""))).upper()
     caption_color = str(clip_data.get("caption_color", "&H0000FFFF"))
 
-    # B&W Drop sirf aura/funny mein jab AI ne explicit bw_drop_sec diya ho
+    # B&W Beat Drop sirf aura/funny mein jab AI ne explicit bw_drop_sec diya ho
     bw_drop = clip_data.get("bw_drop_sec", None)
     try:
         bw_drop = float(bw_drop) if (bw_drop is not None and edit_type in ("aura", "funny")) else None
@@ -152,42 +158,46 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     except Exception:
         bw_drop = None
 
-    is_split = (layout == "split_facecam" and facecam_pos != "none")
+    is_split = (facecam_box is not None)
     output_file = f"MAG73_{edit_type.upper()}_Clip_{index + 1}.mp4"
 
-    # NO forced default BGM — sirf wahi download karo jo AI ne decide kiya hai
-    bgm_file = _fetch_audio(clip_data.get("bgm_query", ""), f"bgm_{index}")
-    sfx_file = _fetch_audio(clip_data.get("sfx_query", ""), f"sfx_{index}")
+    # Clean style mein koi forced BGM/SFX/Banner nahi
+    bgm_query = "" if edit_type == "clean" else clip_data.get("bgm_query", "")
+    sfx_query = "" if edit_type == "clean" else clip_data.get("sfx_query", "")
+
+    bgm_file = _fetch_audio(bgm_query, f"bgm_{index}")
+    sfx_file = _fetch_audio(sfx_query, f"sfx_{index}")
     ass_file = generate_captions(word_timestamps, start, start + duration, caption_color, font_name, is_split, f"cap_{index}.ass")
 
     # 1. Base Layout
-    layout_graph = _build_layout_graph(layout, facecam_pos, focus_x)
+    layout_graph = _build_layout_graph(facecam_box, focus_x)
 
-    # 2. Style-based Post-Processing
+    # 2. 4 Alag Edit Styles
     if edit_type == "aura":
-        post_vf = ["eq=contrast=1.10:saturation=1.12"]
-    elif edit_type == "clutch":
-        post_vf = ["eq=contrast=1.08:saturation=1.14"]
+        post_vf = ["eq=contrast=1.14:saturation=0.92:brightness=-0.03", "vignette=PI/6"]
+    elif edit_type == "hype":
+        post_vf = ["eq=contrast=1.10:saturation=1.18"]
+    elif edit_type == "funny":
+        post_vf = ["eq=contrast=1.06:saturation=1.08"]
     else:
-        post_vf = ["eq=contrast=1.03:saturation=1.05"]
+        post_vf = ["eq=contrast=1.02:saturation=1.03"]
 
     if bw_drop is not None:
         post_vf.append(f"hue=s=0:enable='gte(t,{bw_drop:.2f})'")
-        post_vf.append(f"eq=contrast=1.20:enable='gte(t,{bw_drop:.2f})'")
+        post_vf.append(f"eq=contrast=1.22:enable='gte(t,{bw_drop:.2f})'")
 
-    if title_text:
+    # Title banner sirf tab jab AI ne title_text diya ho aur style 'clean' na ho
+    if title_text and edit_type != "clean":
         if edit_type == "funny":
             banner_bg = "0xC81E1E@0.90"
         elif edit_type == "aura":
-            banner_bg = "0x0B0D12@0.90"
-        elif edit_type == "clutch":
-            banner_bg = "0x1E293B@0.88"
+            banner_bg = "0x0B0D12@0.92"
         else:
-            banner_bg = "0x111318@0.78"
+            banner_bg = "0x1E293B@0.88"
 
         post_vf.append(
             f"drawtext=fontfile={font_path}:text='{title_text}':fontcolor=white:fontsize=46:"
-            f"box=1:boxcolor={banner_bg}:boxborderw=18:x=(w-text_w)/2:y=140:enable='between(t,0,4.0)'"
+            f"box=1:boxcolor={banner_bg}:boxborderw=18:x=(w-text_w)/2:y=140:enable='between(t,0,3.8)'"
         )
 
     if ass_file and os.path.exists(ass_file):
@@ -196,8 +206,8 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     video_chain = f"{layout_graph}[base]{','.join(post_vf)}[v];"
     cmd = ["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", video_path]
 
-    # 3. Clean Audio Mixing (Voice always clear; BGM volume tuned by style)
-    bgm_vol = "0.26" if edit_type in ("aura", "clutch") else "0.16"
+    # 3. Clean Audio Mixing
+    bgm_vol = "0.26" if edit_type in ("aura", "hype") else "0.15"
 
     if bgm_file and sfx_file:
         cmd.extend(["-stream_loop", "-1", "-i", bgm_file, "-i", sfx_file])
@@ -226,7 +236,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
             f"{video_chain}"
             f"[0:a]volume=1.15[voice];"
             f"[1:a]{sfx_filter}[sfx];"
-            f"[voice][sfx]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]"
+            f"[voice][sfx]amix=inputs=2:duration=first:normalize=0[a]"
         )
     else:
         fc = f"{video_chain}[0:a]anull[a]"
@@ -238,7 +248,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         output_file
     ])
 
-    print(f"[MAG73 Pro Editor] Rendering {output_file} | Style: {edit_type} | Layout: {layout} | B&W Drop: {bw_drop}")
+    print(f"[MAG73 Pro Editor] Rendering {output_file} | Style: {edit_type} | FacecamBox: {facecam_box} | B&W Drop: {bw_drop}")
     subprocess.run(cmd, check=True)
 
     # 4. Save Cover Thumbnail (.jpg) in output_clips/
