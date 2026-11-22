@@ -14,12 +14,10 @@ OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 gemini_client = genai.Client(api_key=GEMINI_KEY)
 
 def extract_word_transcript(video_path="source_video.mp4"):
-    """Groq Whisper se word-level timestamps nikaalta hai (safe fallback ke saath)"""
+    """Groq Whisper se Roman Hinglish/English word timestamps nikaalta hai (no tofu boxes)"""
     if not GROQ_KEY:
-        print("[MAG73 Audio] No GROQ_API_KEY found, skipping Whisper transcript.")
         return "", []
     try:
-        print("[MAG73 Audio] Extracting audio & word-level timestamps...")
         subprocess.run([
             "ffmpeg", "-y", "-i", video_path,
             "-vn", "-acodec", "libmp3lame", "-q:a", "4", "temp_audio.mp3"
@@ -32,49 +30,44 @@ def extract_word_transcript(video_path="source_video.mp4"):
                 files={"file": f},
                 data={
                     "model": "whisper-large-v3-turbo",
+                    "language": "en",
+                    "prompt": "Transcribe in clean English or Roman Hinglish using ONLY English A-Z letters. Never use Devanagari or Urdu script.",
                     "response_format": "verbose_json",
                     "timestamp_granularities[]": "word"
                 },
                 timeout=120
             )
         if res.status_code != 200:
-            print(f"[MAG73 Audio] Whisper warning ({res.status_code}): {res.text[:200]}")
             return "", []
         data = res.json()
         return data.get("text", ""), data.get("words", [])
     except Exception as e:
-        print(f"[MAG73 Audio] Transcript skipped due to error: {e}")
+        print(f"[MAG73 Audio] Skipped: {e}")
         return "", []
 
 def _wait_for_gemini_file(video_file):
-    """Jab tak Gemini video ko ACTIVE na kar de, tab tak wait karta hai"""
-    print("[MAG73 Vision] Waiting for Gemini to process video...")
     while True:
-        file_info = gemini_client.files.get(name=video_file.name)
-        state = getattr(file_info.state, "name", str(file_info.state))
+        info = gemini_client.files.get(name=video_file.name)
+        state = getattr(info.state, "name", str(info.state))
         if state == "ACTIVE":
-            print("[MAG73 Vision] Video is ACTIVE and ready!")
-            return file_info
-        elif state == "FAILED":
-            raise RuntimeError("Gemini failed to process the uploaded video.")
+            return info
+        if state == "FAILED":
+            raise RuntimeError("Gemini video processing failed.")
         time.sleep(3)
 
 def _expert_gemini_vision(video_file, transcript_text, chat_spikes):
     try:
         prompt = f"""
-        You are the VISUAL & ACTION DIRECTOR in the MAG73 AI Council.
-        Watch the video frames, read the transcript, and check live chat hype spikes (in seconds): {chat_spikes}.
-        Find up to 5 best viral moments (15 to 58 seconds each).
-        Return a JSON list with: start (int seconds), end (int seconds), score (1-100), reason.
+        You are the VISUAL & VIRAL DIRECTOR in MAG73.
+        Watch the entire video + check live chat bursts ({chat_spikes}).
+        Find EVERY SINGLE viral moment (funny reaction, game glitch, insane dialogue, roast, clutch, plot twist).
+        Do NOT limit to a fixed count — extract as many great 12-58s clips as exist in this video.
+        Return JSON list: [{{ "start": int, "end": int, "score": 1-100, "reason": "..." }}]
         Transcript: {transcript_text[:10000]}
         """
-        res = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[video_file, prompt]
-        )
+        res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=[video_file, prompt])
         return res.text
-    except Exception as e:
-        print(f"[MAG73 Vision] Error: {e}")
+    except Exception:
         return "[]"
 
 def _expert_groq_dialogue(transcript_text, chat_spikes):
@@ -82,47 +75,18 @@ def _expert_groq_dialogue(transcript_text, chat_spikes):
         return "[]"
     try:
         prompt = f"""
-        You are the DIALOGUE, COMEDY & STORYTELLING EXPERT in the MAG73 AI Council.
-        Analyze this transcript and live chat spikes ({chat_spikes}) to find the funniest or most engaging moments (15-58s).
-        Return a JSON list with: start (int seconds), end (int seconds), score (1-100), reason.
-        Transcript: {transcript_text[:14000]}
+        Find ALL funny dialogues, roasts, shocking lines, or chat-burst moments (12-58s).
+        Chat spikes: {chat_spikes}. Transcript: {transcript_text[:14000]}
+        Return JSON list with start, end, score, reason.
         """
         res = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {GROQ_KEY}"},
-            json={
-                "model": "llama-3.3-70b-versatile",
-                "messages": [{"role": "user", "content": prompt}]
-            },
+            json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}]},
             timeout=60
         ).json()
         return res["choices"][0]["message"]["content"]
-    except Exception as e:
-        print(f"[MAG73 Llama] Skipped: {e}")
-        return "[]"
-
-def _expert_openrouter_hooks(transcript_text, chat_spikes):
-    if not OPENROUTER_KEY or not transcript_text:
-        return "[]"
-    try:
-        prompt = f"""
-        You are the VIRAL RETENTION & HOOK SPECIALIST.
-        Find moments (15-58s) with an explosive 3-second opening hook and clean ending.
-        Chat spikes: {chat_spikes}. Transcript: {transcript_text[:14000]}
-        Return a JSON list with: start (int seconds), end (int seconds), score (1-100), hook_banner (max 5 words), mood (aura/funny/documentary/casual).
-        """
-        res = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OPENROUTER_KEY}"},
-            json={
-                "model": "openrouter/free",
-                "messages": [{"role": "user", "content": prompt}]
-            },
-            timeout=60
-        ).json()
-        return res["choices"][0]["message"]["content"]
-    except Exception as e:
-        print(f"[MAG73 OpenRouter] Skipped: {e}")
+    except Exception:
         return "[]"
 
 def _clean_json(raw_text):
@@ -130,62 +94,64 @@ def _clean_json(raw_text):
         match = re.search(r"\[.*\]", raw_text, re.DOTALL)
         if match:
             return json.loads(match.group(0))
-    except Exception as e:
-        print(f"[MAG73 JSON] Parse warning: {e}")
+    except Exception:
+        pass
     return []
 
 def run_super_ai_council(video_path, chat_spikes):
     transcript_text, word_timestamps = extract_word_transcript(video_path)
-
-    print("[MAG73 Council] Uploading video to Gemini Vision...")
     uploaded_file = gemini_client.files.upload(file=video_path)
     video_file = _wait_for_gemini_file(uploaded_file)
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         f1 = executor.submit(_expert_gemini_vision, video_file, transcript_text, chat_spikes)
         f2 = executor.submit(_expert_groq_dialogue, transcript_text, chat_spikes)
-        f3 = executor.submit(_expert_openrouter_hooks, transcript_text, chat_spikes)
-
         vision_report = f1.result()
         dialogue_report = f2.result()
-        hook_report = f3.result()
 
-    print("[MAG73 Judge] Merging all AI opinions into final Master Cut list...")
+    style_pref = os.getenv("EDIT_STYLE", "auto").strip().lower()
+
     judge_prompt = f"""
-    You are the CHIEF AI JUDGE of MAG73. Combine the reports from all 3 AI experts + Live Chat Spikes ({chat_spikes}):
-    1. Gemini Vision Report: {vision_report}
-    2. Llama 70B Dialogue Report: {dialogue_report}
-    3. OpenRouter Viral Hook Report: {hook_report}
+    You are the CHIEF CREATIVE DIRECTOR of MAG73.
+    User style preference: "{style_pref}" (if "auto", be 100% creative and invent a unique pro editing style for EACH clip!).
+    Combine Vision Report ({vision_report}), Dialogue Report ({dialogue_report}), and Chat Spikes ({chat_spikes}).
 
-    Select the TOP 3 to 5 ULTIMATE CLIPS (between 15 and 58 seconds each). If the video is short, select at least 1 clip covering the best part.
-    Return ONLY a valid JSON array with exact keys:
+    Extract ALL genuinely viral clips (12 to 58 seconds each — no fixed limit, extract 1 if short video, or 8+ if long video).
+    For EACH clip, design a UNIQUE, creative pro-editor recipe using these dynamic parameters:
+    - "effects": choose 2-4 from ["punch_zoom", "camera_shake", "rgb_glitch", "flash_impact", "slow_zoom", "vignette"]
+    - "bgm_query": specific YouTube search for no-copyright BGM matching THIS clip's exact emotion
+    - "sfx_query": specific YouTube search for viral SFX (e.g. "vine boom sfx", "bass drop whoosh sfx", "glitch sound effect")
+    - "contrast": float 1.05 to 1.25
+    - "saturation": float 0.85 to 1.35
+    - "caption_color": ASS hex color like "&H0000FFFF" (yellow), "&H0000FF88" (mint), "&H00FFFFFF" (white), "&H00FF99FF" (pink)
+    - "hook_text": punchy 2-4 word English/Hinglish hook (ASCII letters only)
+
+    Return ONLY valid JSON array:
     [
       {{
         "start": 0,
-        "end": 30,
-        "combined_score": 94,
-        "hook_text": "WAIT FOR THE END",
-        "mood": "aura",
-        "yt_title": "Insane Moment #shorts #viral",
-        "yt_description": "Edited by MAG73 Multi-AI Engine #shorts"
+        "end": 22,
+        "mood": "creative_vibe_name",
+        "hook_text": "WAIT FOR THIS",
+        "effects": ["punch_zoom", "flash_impact", "camera_shake"],
+        "bgm_query": "ytsearch1:phonk aggressive bass no copyright",
+        "sfx_query": "ytsearch1:vine boom sound effect",
+        "contrast": 1.15,
+        "saturation": 1.22,
+        "caption_color": "&H0000FFFF"
       }}
     ]
     """
-    final_res = gemini_client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=judge_prompt
-    )
+    final_res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=judge_prompt)
     clips = _clean_json(final_res.text)
     if not clips:
-        # Guaranteed fallback agar video chhota ho ya JSON empty aaye
         clips = [{
-            "start": 0,
-            "end": 30,
-            "combined_score": 85,
-            "hook_text": "WATCH TILL END",
-            "mood": "casual",
-            "yt_title": "Highlight Clip #shorts",
-            "yt_description": "Edited by MAG73 Studio"
+            "start": 0, "end": 22, "mood": "pro_dynamic",
+            "hook_text": "INSANE MOMENT",
+            "effects": ["punch_zoom", "flash_impact", "vignette"],
+            "bgm_query": "ytsearch1:viral phonk edit music no copyright",
+            "sfx_query": "ytsearch1:bass drop impact sound effect",
+            "contrast": 1.15, "saturation": 1.2, "caption_color": "&H0000FFFF"
         }]
-    print(f"[MAG73 Judge] Approved {len(clips)} viral clips!")
+    print(f"[MAG73 Creative Director] Designed {len(clips)} unique viral clips!")
     return clips, word_timestamps
