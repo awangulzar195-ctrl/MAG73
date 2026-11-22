@@ -31,7 +31,7 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
                     "model": "whisper-large-v3-turbo",
                     "response_format": "verbose_json",
                     "timestamp_granularities[]": "word",
-                    "prompt": "Bhai ye Hindi aur Hinglish gaming stream hai. Jo bola gaya hai wahi likho, English mein translate mat karo."
+                    "prompt": "Bhai ye Hindi aur Hinglish video/stream hai. Jo bola gaya hai wahi likho, English mein translate mat karo."
                 },
                 timeout=120
             )
@@ -44,7 +44,6 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
         detected_lang = data.get("language", "unknown")
         print(f"[MAG73 Audio] Detected Language: {detected_lang} | Words: {len(words)}")
 
-        # Hindi/Urdu ya Devanagari/Arabic script ko exact Roman Hinglish mein badlo
         if words and (detected_lang in ("hi", "ur", "hindi", "urdu") or re.search(r"[^\x00-\x7F]", text)):
             words = _convert_words_to_hinglish(words)
             text = " ".join(w.get("word", "") for w in words)
@@ -62,8 +61,8 @@ def _convert_words_to_hinglish(words):
             chunk = raw_list[i:i + 100]
             prompt = (
                 "Transliterate each word in this JSON array into natural Roman Hinglish "
-                "(e.g. 'भाई' -> 'Bhai', 'क्या' -> 'kya', 'लड़ाई' -> 'ladai'). "
-                "DO NOT translate Hindi words into English! Keep already-English words unchanged. "
+                "(e.g. 'भाई' -> 'Bhai', 'क्या' -> 'kya', 'गाड़ी' -> 'gaadi'). "
+                "DO NOT translate Hindi into English! Keep English words unchanged. "
                 "Use ONLY A-Z letters. Return ONLY a JSON array of the EXACT SAME LENGTH.\n"
                 f"Input: {json.dumps(chunk, ensure_ascii=False)}"
             )
@@ -97,29 +96,31 @@ def _wait_for_gemini_file(video_file):
 def _expert_gemini_vision(video_file, transcript_text, audience_signals):
     try:
         prompt = f"""
-        You are a STRICT VIRAL REELS DIRECTOR in MAG73.
-        Analyze BOTH the video visuals/audio AND audience signals:
+        You are an ULTRA-STRICT VIRAL REELS DIRECTOR in MAG73.
+        Analyze the video + audience signals:
         - Live Chat Spikes (seconds): {audience_signals.get('chat_spikes', [])}
         - Top Comment Timestamps (seconds): {audience_signals.get('comment_timestamps', [])}
         - Top Viewer Comments: {audience_signals.get('top_comments', [])[:12]}
 
         CRITICAL RULES:
-        1. REAL HUMAN FACECAM CHECK (VERY IMPORTANT):
-           - Look closely: Is there an ACTUAL REAL HUMAN PERSON visible on a webcam overlay in a corner?
-           - A game minimap, radar, HUD, kill feed, or mic icon is NOT a facecam!
-           - ONLY set "layout": "split_facecam" if a REAL HUMAN FACE is clearly visible AND their facial reaction is a key part of the moment.
-           - Otherwise, ALWAYS set "layout": "full_vertical" and "facecam_pos": "none".
-        2. NO BORING CLIPS: Do NOT clip just because chat was active! Only clip if there is a GENUINE, COMPLETE viral moment (insane clutch, hilarious roast/dialogue, shocking glitch, or aura moment) with score >= 85/100.
-           If there is NO genuinely great moment in this video, return an empty list: [].
-        3. COMPLETE ARC: Start at the beginning of the setup and end after the full punchline/kill/reaction.
+        1. NO BORING CLIPS (STRICT!):
+           - NEVER clip normal driving, walking, looting, shopping, or casual talking!
+           - ONLY pick truly INSANE, HILARIOUS, SHOCKING, or VIRAL moments (score >= 92/100).
+           - Keep clips TIGHT: 12 to 35 seconds max (complete setup -> punchline/action, zero dead air).
+           - If there is NO 92+ banger moment in this video, return [].
+        2. EXACT FACECAM BOX DETECTION:
+           - Check if a REAL HUMAN PERSON is visible in a webcam box overlay.
+           - If YES, measure the EXACT normalized bounding box of ONLY the webcam rectangle:
+             "facecam_box": [x, y, w, h] where values are 0.0 to 1.0 (e.g. middle-left webcam above minimap = [0.0, 0.44, 0.22, 0.24]).
+             DO NOT include the minimap or game HUD in facecam_box!
+           - If NO real human facecam exists, set "facecam_box": null.
 
         Return JSON list:
         [{{
           "start": int,
           "end": int,
-          "score": 85-100,
-          "layout": "full_vertical or split_facecam",
-          "facecam_pos": "none/bottom_right/bottom_left/top_right/top_left",
+          "score": 92-100,
+          "facecam_box": [0.0, 0.44, 0.22, 0.24] or null,
           "focus_x": "center/left/right",
           "reason": "..."
         }}]
@@ -135,8 +136,8 @@ def _expert_groq_dialogue(transcript_text, audience_signals):
         return "[]"
     try:
         prompt = f"""
-        Find ONLY genuinely hilarious, savage, shocking, or peak hype dialogue moments (score >= 85/100).
-        If the transcript is just normal boring gameplay talk, return [].
+        Find ONLY 92+/100 genuinely hilarious, savage, shocking, or peak hype dialogue moments (12-35s).
+        IGNORE normal driving, walking, or average gameplay talk. If nothing is 92+, return [].
         Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
         Top Comments: {audience_signals.get('top_comments', [])[:10]}
         Chat Spikes: {audience_signals.get('chat_spikes', [])}
@@ -186,27 +187,25 @@ def run_super_ai_council(video_path, audience_signals):
     Dialogue Report: {dialogue_report}
 
     STRICT RULES:
-    1. QUALITY ONLY: Only approve clips with score >= 85 that have a COMPLETE story/moment. If nothing is truly viral/entertaining, return [].
-    2. FACECAM RULE: Keep "layout": "full_vertical" and "facecam_pos": "none" UNLESS Vision Report confirmed a REAL HUMAN FACE in a webcam box AND their face reaction matters. NEVER crop a minimap or HUD!
-    3. EDIT STYLE ("edit_type"): Choose the best fitting style:
-       - "aura": Sigma/epic clutch/badass moment -> phonk BGM + B&W beat drop ("bw_drop_sec") at the peak.
-       - "funny": Hilarious roast/fail/meme moment -> light funny BGM or none, vine boom SFX ONLY at the punchline ("bw_drop_sec" optional).
-       - "clutch": Intense gaming action -> hype build-up BGM, NO B&W drop ("bw_drop_sec": null).
-       - "clean": Clean story/podcast/vlog clip -> subtle background music or "", NO fazool SFX, NO B&W drop.
-    4. BANNER TITLE ("title_text"): Short, natural 2-5 word Hinglish/English title (ASCII only), or "" if not needed.
-    5. BGM & SFX: Leave "bgm_query" or "sfx_query" as "" if the clip is better without it. Do NOT spam SFX!
+    1. ONLY approve genuinely 92+/100 banger clips (12-35 seconds, tightly cut). NO boring driving/walking! If none exist, return [].
+    2. FACECAM: Keep the exact "facecam_box": [x, y, w, h] from Vision Report ONLY if a real human facecam exists and adds value; otherwise null.
+    3. VARIED EDIT STYLES ("edit_type") — NEVER edit every clip the same way:
+       - "aura": Epic/savage/sigma moment -> dark cinematic grade, B&W beat drop ("bw_drop_sec"), phonk BGM.
+       - "funny": Hilarious fail/roast -> NO heavy BGM, clean punchy look, optional title banner.
+       - "hype": Intense clutch/action -> vibrant colors, energetic BGM, NO B&W drop.
+       - "clean": Raw viral clip -> NO banner ("title_text": ""), NO BGM ("bgm_query": ""), NO SFX ("sfx_query": ""), just clean captions.
+    4. Leave "bgm_query", "sfx_query", and "title_text" as "" whenever the clip is better raw/clean.
 
     Return ONLY valid JSON array:
     [
       {{
-        "start": 10,
-        "end": 32,
-        "score": 91,
+        "start": 40,
+        "end": 55,
+        "score": 94,
         "edit_type": "funny",
-        "layout": "full_vertical",
-        "facecam_pos": "none",
+        "facecam_box": [0.0, 0.44, 0.22, 0.24],
         "focus_x": "center",
-        "title_text": "LADAI HO GAYI HAMARI",
+        "title_text": "",
         "bw_drop_sec": null,
         "bgm_query": "",
         "sfx_query": "",
@@ -217,8 +216,8 @@ def run_super_ai_council(video_path, audience_signals):
     final_res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=judge_prompt)
     raw_clips = _clean_json(final_res.text)
 
-    # Strict filter: sirf asli 85+ moments rakho, koi forced boring fallback nahi!
-    clips = [c for c in raw_clips if int(c.get("score", 0)) >= 85]
+    # Hard filter: sirf 92+ banger moments rakho
+    clips = [c for c in raw_clips if int(c.get("score", 0)) >= 92]
 
-    print(f"[MAG73 Pro Editor] Approved {len(clips)} genuine viral clip(s)!")
+    print(f"[MAG73 Pro Editor] Approved {len(clips)} genuine 92+ banger clip(s)!")
     return clips, word_timestamps
