@@ -8,7 +8,7 @@ PRO_FONT_FILE = "Montserrat-ExtraBold.ttf"
 PRO_FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-ExtraBold.ttf"
 
 def _ensure_pro_font():
-    """Pro Montserrat-ExtraBold font download karta hai taaki captions studio-grade lagein"""
+    """Pro Montserrat-ExtraBold font download karta hai"""
     if not os.path.exists(PRO_FONT_FILE):
         try:
             r = requests.get(PRO_FONT_URL, timeout=15)
@@ -24,7 +24,7 @@ def _ensure_pro_font():
     return FALLBACK_FONT, "DejaVu Sans"
 
 def _fetch_audio(query, out_prefix):
-    """Cookies + JS solver ke saath YouTube se BGM/SFX cleanly download karta hai"""
+    """Cookies + JS solver ke saath YouTube se BGM/SFX download karta hai"""
     out_file = f"{out_prefix}.mp3"
     if os.path.exists(out_file) or not query:
         return out_file if os.path.exists(out_file) else None
@@ -55,13 +55,17 @@ def _format_ass_time(seconds):
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 def _ascii_only(text):
-    return re.sub(r"[^A-Za-z0-9 !?@#.,'-]", "", text).strip()
+    return re.sub(r"[^A-Za-z0-9 !?@#,.-]", "", text).strip()
 
-def generate_captions(words, clip_start, clip_end, time_offset, color_hex, font_name, ass_path):
-    """Clean, bold pro Hinglish/English captions with smooth pop animation"""
+def generate_captions(words, clip_start, clip_end, color_hex, font_name, is_split, ass_path):
+    """Clean, bold pro Hinglish/English captions (Split-screen mein center seam par)"""
     clip_words = [w for w in words if w.get("start", 0) >= clip_start and w.get("end", 0) <= clip_end]
     if not clip_words:
         return None
+
+    # Split-screen mein captions center seam (920px) par rakho taaki facecam na dhake
+    margin_v = 900 if is_split else 360
+    font_size = 76 if is_split else 82
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -70,7 +74,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},82,{color_hex},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,1,0,1,6,3,2,60,60,360,1
+Style: Default,{font_name},{font_size},{color_hex},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,1,0,1,6,3,2,60,60,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -78,8 +82,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     events = []
     for i in range(0, len(clip_words), 2):
         chunk = clip_words[i:i+2]
-        w_start = max(0, (chunk[0]["start"] - clip_start) + time_offset)
-        w_end = max(w_start + 0.25, (chunk[-1]["end"] - clip_start) + time_offset)
+        w_start = max(0, chunk[0]["start"] - clip_start)
+        w_end = max(w_start + 0.25, chunk[-1]["end"] - clip_start)
         clean_txt = _ascii_only(" ".join(w.get("word", "").strip().upper() for w in chunk))
         if not clean_txt:
             continue
@@ -92,105 +96,111 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         f.write(header + "\n".join(events))
     return ass_path
 
-def _build_crop_filter(focus_x):
-    """Main subject ko frame mein rakhne ke liye smart 9:16 framing"""
+def _build_layout_graph(layout, facecam_pos, focus_x):
+    """
+    split_facecam: Top 1080x960 Gameplay + Bottom 1080x960 Streamer Facecam
+    full_vertical: Smart 9:16 subject framing
+    """
+    if layout == "split_facecam" and facecam_pos in ("bottom_right", "bottom_left", "top_right", "top_left"):
+        if facecam_pos == "bottom_right":
+            cx, cy = "iw*0.72", "ih*0.66"
+        elif facecam_pos == "bottom_left":
+            cx, cy = "0", "ih*0.66"
+        elif facecam_pos == "top_right":
+            cx, cy = "iw*0.72", "0"
+        else:
+            cx, cy = "0", "0"
+
+        return (
+            f"[0:v]split=2[game_src][cam_src];"
+            f"[game_src]scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,setsar=1[top];"
+            f"[cam_src]crop=iw*0.28:ih*0.34:{cx}:{cy},scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,setsar=1[bot];"
+            f"[top][bot]vstack=inputs=2[base];"
+        )
+
     if focus_x == "left":
         x_expr = "(iw-1080)*0.18"
     elif focus_x == "right":
         x_expr = "(iw-1080)*0.82"
     else:
         x_expr = "(iw-1080)/2"
-    return f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:{x_expr}:(ih-1920)/2,setsar=1"
+    return f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:{x_expr}:(ih-1920)/2,setsar=1[base];"
 
 def render_pro_short(video_path, clip_data, word_timestamps, index):
     font_path, font_name = _ensure_pro_font()
 
     start = float(clip_data.get("start", 0))
     end = float(clip_data.get("end", start + 25))
-    duration = max(6.0, min(55.0, end - start))
+    duration = max(8.0, min(55.0, end - start))
 
-    mood = re.sub(r"[^a-zA-Z0-9_]", "", str(clip_data.get("mood", "pro")))[:16] or "pro"
+    edit_type = re.sub(r"[^a-zA-Z0-9_]", "", str(clip_data.get("edit_type", "pro"))).lower() or "pro"
+    layout = str(clip_data.get("layout", "full_vertical")).lower()
+    facecam_pos = str(clip_data.get("facecam_pos", "none")).lower()
     focus_x = str(clip_data.get("focus_x", "center")).lower()
     title_text = _ascii_only(str(clip_data.get("title_text", ""))).upper()
     caption_color = str(clip_data.get("caption_color", "&H0000FFFF"))
-    hook_start = clip_data.get("visual_hook_start", None)
 
-    output_file = f"MAG73_{mood.upper()}_Clip_{index + 1}.mp4"
+    # Optional Black & White Punchline / Aura Drop timestamp (relative to clip start)
+    bw_drop = clip_data.get("bw_drop_sec", None)
+    try:
+        bw_drop = float(bw_drop) if bw_drop is not None else None
+        if bw_drop is not None and (bw_drop < 2.0 or bw_drop > duration - 1.0):
+            bw_drop = None
+    except Exception:
+        bw_drop = None
+
+    is_split = (layout == "split_facecam" and facecam_pos != "none")
+    output_file = f"MAG73_{edit_type.upper()}_Clip_{index + 1}.mp4"
+
     bgm_file = _fetch_audio(clip_data.get("bgm_query", "ytsearch1:trending phonk beat no copyright"), f"bgm_{index}")
     sfx_file = _fetch_audio(clip_data.get("sfx_query", ""), f"sfx_{index}")
+    ass_file = generate_captions(word_timestamps, start, start + duration, caption_color, font_name, is_split, f"cap_{index}.ass")
 
-    # Step 1: Optional 2-second Visual Hook prepend
-    working_input = video_path
-    working_start = start
-    working_dur = duration
-    caption_offset = 0.0
+    # 1. Base Layout (Split-Screen or Full Vertical)
+    layout_graph = _build_layout_graph(layout, facecam_pos, focus_x)
 
-    if hook_start is not None:
-        try:
-            hs = float(hook_start)
-            if hs >= 0 and abs(hs - start) > 2.5:
-                hook_clip = f"hook_{index}.mp4"
-                main_clip = f"main_{index}.mp4"
-                merged_clip = f"merged_{index}.mp4"
-                subprocess.run([
-                    "ffmpeg", "-y", "-ss", str(hs), "-t", "2.0", "-i", video_path,
-                    "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", hook_clip
-                ], check=True)
-                subprocess.run([
-                    "ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", video_path,
-                    "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", main_clip
-                ], check=True)
-                with open(f"concat_{index}.txt", "w") as cf:
-                    cf.write(f"file '{hook_clip}'\nfile '{main_clip}'\n")
-                subprocess.run([
-                    "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", f"concat_{index}.txt",
-                    "-c", "copy", merged_clip
-                ], check=True)
-                working_input = merged_clip
-                working_start = 0.0
-                working_dur = duration + 2.0
-                caption_offset = 2.0
-        except Exception as e:
-            print(f"[MAG73 Hook] Skipped visual hook: {e}")
+    # 2. Pro Post-Processing (Clean color + B&W Punchline Drop + Sleek Banner + Captions)
+    post_vf = ["eq=contrast=1.06:saturation=1.08"]
 
-    ass_file = generate_captions(word_timestamps, start, start + duration, caption_offset, caption_color, font_name, f"cap_{index}.ass")
+    if bw_drop is not None:
+        post_vf.append(f"hue=s=0:enable='gte(t,{bw_drop:.2f})'")
+        post_vf.append(f"eq=contrast=1.18:enable='gte(t,{bw_drop:.2f})'")
 
-    # Step 2: Clean Pro Visual Filter (No ugly filters or dirty boxes)
-    vf = [
-        _build_crop_filter(focus_x),
-        "eq=contrast=1.06:saturation=1.08"
-    ]
     if title_text:
-        vf.append(
-            f"drawtext=fontfile={font_path}:text='{title_text}':fontcolor=white:fontsize=54:"
-            f"borderw=5:bordercolor=black:shadowx=2:shadowy=2:x=(w-text_w)/2:y=160:enable='between(t,0,3.2)'"
+        banner_bg = "0xC81E1E@0.90" if edit_type in ("funny", "hype") else "0x111318@0.88"
+        post_vf.append(
+            f"drawtext=fontfile={font_path}:text='{title_text}':fontcolor=white:fontsize=48:"
+            f"box=1:boxcolor={banner_bg}:boxborderw=20:x=(w-text_w)/2:y=140:enable='between(t,0,4.5)'"
         )
+
     if ass_file and os.path.exists(ass_file):
-        vf.append(f"ass={ass_file}:fontsdir=.")
+        post_vf.append(f"ass={ass_file}:fontsdir=.")
 
-    vf_filter = ",".join(vf)
-    cmd = ["ffmpeg", "-y", "-ss", str(working_start), "-t", str(working_dur), "-i", working_input]
+    video_chain = f"{layout_graph}[base]{','.join(post_vf)}[v];"
+    cmd = ["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", video_path]
 
-    # normalize=0 keeps both Voice and BGM/SFX punchy and clearly audible!
+    # 3. Audio Mixing (Voice + Audible BGM + Punchline-Synced SFX)
     if bgm_file and sfx_file:
         cmd.extend(["-stream_loop", "-1", "-i", bgm_file, "-i", sfx_file])
+        sfx_delay_ms = int(bw_drop * 1000) if bw_drop is not None else 0
+        sfx_filter = f"atrim=0:2.0,adelay={sfx_delay_ms}|{sfx_delay_ms},volume=0.60" if sfx_delay_ms > 0 else "atrim=0:2.0,volume=0.55"
         fc = (
-            f"[0:v]{vf_filter}[v];"
+            f"{video_chain}"
             f"[0:a]volume=1.15[voice];"
-            f"[1:a]volume=0.26[bgm];"
-            f"[2:a]atrim=0:1.8,volume=0.55[sfx];"
+            f"[1:a]volume=0.28[bgm];"
+            f"[2:a]{sfx_filter}[sfx];"
             f"[voice][bgm][sfx]amix=inputs=3:duration=first:dropout_transition=2:normalize=0[a]"
         )
     elif bgm_file:
         cmd.extend(["-stream_loop", "-1", "-i", bgm_file])
         fc = (
-            f"[0:v]{vf_filter}[v];"
+            f"{video_chain}"
             f"[0:a]volume=1.15[voice];"
-            f"[1:a]volume=0.26[bgm];"
+            f"[1:a]volume=0.28[bgm];"
             f"[voice][bgm]amix=inputs=2:duration=first:normalize=0[a]"
         )
     else:
-        fc = f"[0:v]{vf_filter}[v];[0:a]anull[a]"
+        fc = f"{video_chain}[0:a]anull[a]"
 
     cmd.extend([
         "-filter_complex", fc, "-map", "[v]", "-map", "[a]",
@@ -199,14 +209,14 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         output_file
     ])
 
-    print(f"[MAG73 Pro Editor] Rendering {output_file}...")
+    print(f"[MAG73 Pro Editor] Rendering {output_file} | Layout: {layout} | B&W Drop: {bw_drop}")
     subprocess.run(cmd, check=True)
 
-    # Step 3: Save Cover Thumbnail (.jpg) in output_clips/
+    # 4. Save Cover Thumbnail (.jpg) in output_clips/
     os.makedirs("output_clips", exist_ok=True)
     cover_path = os.path.join("output_clips", output_file.replace(".mp4", ".jpg"))
     subprocess.run([
-        "ffmpeg", "-y", "-ss", "1.5", "-i", output_file,
+        "ffmpeg", "-y", "-ss", "2.0", "-i", output_file,
         "-vframes", "1", "-q:v", "4", cover_path
     ], check=False)
 
