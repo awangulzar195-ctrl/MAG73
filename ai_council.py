@@ -13,9 +13,9 @@ GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
 gemini_client = genai.Client(api_key=GEMINI_KEY)
 
 def extract_accurate_transcript(video_path="source_video.mp4"):
-    """Spoken Hindi/Hinglish/English ko bina translate kiye exact word timestamps ke saath nikaalta hai"""
+    """Whisper language='hi' ke saath exact Hindi/Hinglish word timestamps nikaalta hai"""
     if not GROQ_KEY:
-        return "", [], "unknown"
+        return "", [], "hi"
     try:
         subprocess.run([
             "ffmpeg", "-y", "-i", video_path,
@@ -29,41 +29,46 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
                 files={"file": f},
                 data={
                     "model": "whisper-large-v3-turbo",
+                    "language": "hi",
                     "response_format": "verbose_json",
                     "timestamp_granularities[]": "word",
-                    "prompt": "Bhai ye Hindi aur Hinglish video/stream hai. Jo bola gaya hai wahi likho, English mein translate mat karo."
+                    "prompt": "Ye ek Indian Hindi aur Hinglish video hai. Exact bole gaye shabd likho."
                 },
                 timeout=120
             )
         if res.status_code != 200:
-            return "", [], "unknown"
+            return "", [], "hi"
 
         data = res.json()
-        text = data.get("text", "")
         words = data.get("words", [])
-        detected_lang = data.get("language", "unknown")
-        print(f"[MAG73 Audio] Detected Language: {detected_lang} | Words: {len(words)}")
+        text = data.get("text", "")
+        print(f"[MAG73 Audio] Extracted {len(words)} accurate Hindi/Hinglish words.")
 
-        if words and (detected_lang in ("hi", "ur", "hindi", "urdu") or re.search(r"[^\x00-\x7F]", text)):
-            words = _convert_words_to_hinglish(words)
+        if words:
+            words = _convert_words_to_hinglish(words, text)
             text = " ".join(w.get("word", "") for w in words)
 
-        return text, words, detected_lang
+        return text, words, "hi"
     except Exception as e:
         print(f"[MAG73 Audio] Transcript skipped: {e}")
-        return "", [], "unknown"
+        return "", [], "hi"
 
-def _convert_words_to_hinglish(words):
+def _convert_words_to_hinglish(words, full_context):
+    """Full sentence context ke saath 100% clean Roman Hinglish mein convert karta hai"""
     try:
         raw_list = [w.get("word", "").strip() for w in words]
         converted_all = []
-        for i in range(0, len(raw_list), 100):
-            chunk = raw_list[i:i + 100]
+        for i in range(0, len(raw_list), 80):
+            chunk = raw_list[i:i + 80]
             prompt = (
-                "Transliterate each word in this JSON array into natural Roman Hinglish "
-                "(e.g. 'भाई' -> 'Bhai', 'क्या' -> 'kya', 'गाड़ी' -> 'gaadi'). "
-                "DO NOT translate Hindi into English! Keep English words unchanged. "
-                "Use ONLY A-Z letters. Return ONLY a JSON array of the EXACT SAME LENGTH.\n"
+                "Convert each word in this JSON array into clean, accurate, natural Roman Hinglish "
+                "(e.g. 'चिकन' -> 'Chicken', 'सब्जी' -> 'Sabzi', 'ग्लव्स' -> 'Gloves', 'भाई' -> 'Bhai', 'क्या' -> 'Kya').\n"
+                "RULES:\n"
+                "1. Fix any minor spelling errors using the sentence context.\n"
+                "2. Keep English words in proper English spelling (Chicken, Fresh, Gloves, Hygiene, Boneless).\n"
+                "3. DO NOT translate Hindi words into English! Keep them in Roman Hindi.\n"
+                "4. Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
+                f"Context: {full_context[:500]}\n"
                 f"Input: {json.dumps(chunk, ensure_ascii=False)}"
             )
             res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
@@ -78,7 +83,7 @@ def _convert_words_to_hinglish(words):
         for idx, w in enumerate(words):
             if idx < len(converted_all):
                 w["word"] = str(converted_all[idx])
-        print("[MAG73 Audio] Converted captions to 100% accurate Roman Hinglish!")
+        print("[MAG73 Audio] 100% accurate Roman Hinglish captions ready!")
     except Exception as e:
         print(f"[MAG73 Audio] Hinglish conversion warning: {e}")
     return words
@@ -102,26 +107,19 @@ def _expert_gemini_vision(video_file, transcript_text, audience_signals):
         - Top Comment Timestamps (seconds): {audience_signals.get('comment_timestamps', [])}
         - Top Viewer Comments: {audience_signals.get('top_comments', [])[:12]}
 
-        CRITICAL RULES:
-        1. NO BORING CLIPS (STRICT!):
-           - NEVER clip normal driving, walking, looting, shopping, or casual talking!
-           - ONLY pick truly INSANE, HILARIOUS, SHOCKING, or VIRAL moments (score >= 92/100).
-           - Keep clips TIGHT: 12 to 35 seconds max (complete setup -> punchline/action, zero dead air).
-           - If there is NO 92+ banger moment in this video, return [].
-        2. EXACT FACECAM BOX DETECTION:
-           - Check if a REAL HUMAN PERSON is visible in a webcam box overlay.
-           - If YES, measure the EXACT normalized bounding box of ONLY the webcam rectangle:
-             "facecam_box": [x, y, w, h] where values are 0.0 to 1.0 (e.g. middle-left webcam above minimap = [0.0, 0.44, 0.22, 0.24]).
-             DO NOT include the minimap or game HUD in facecam_box!
-           - If NO real human facecam exists, set "facecam_box": null.
+        STRICT RULES:
+        1. ONLY pick genuinely VIRAL, SHOCKING, FUNNY, EXPOSING, or HIGH-HYPE moments (score >= 90/100).
+           Skip boring/filler/normal talking parts! If there is NO 90+ banger moment, return [].
+        2. COMPLETE STORY ARC: 15 to 40 seconds max. Start at the exact hook/setup and end after the punchline.
+        3. REAL HUMAN FACECAM CHECK: Only set "facecam_box": [x, y, w, h] if this is a gaming/reaction stream with a real human webcam overlay. For normal vlogs/shows/exposés, ALWAYS set "facecam_box": null.
 
         Return JSON list:
         [{{
           "start": int,
           "end": int,
-          "score": 92-100,
-          "facecam_box": [0.0, 0.44, 0.22, 0.24] or null,
-          "focus_x": "center/left/right",
+          "score": 90-100,
+          "facecam_box": null,
+          "focus_x": "center",
           "reason": "..."
         }}]
         Transcript: {transcript_text[:10000]}
@@ -136,11 +134,10 @@ def _expert_groq_dialogue(transcript_text, audience_signals):
         return "[]"
     try:
         prompt = f"""
-        Find ONLY 92+/100 genuinely hilarious, savage, shocking, or peak hype dialogue moments (12-35s).
-        IGNORE normal driving, walking, or average gameplay talk. If nothing is 92+, return [].
+        Pick ONLY 90+/100 genuinely shocking, hilarious, exposing, or peak hype dialogue moments (15-40s).
+        Skip boring parts. If nothing is 90+, return [].
         Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
         Top Comments: {audience_signals.get('top_comments', [])[:10]}
-        Chat Spikes: {audience_signals.get('chat_spikes', [])}
         Transcript: {transcript_text[:14000]}
         Return JSON list with start, end, score, reason.
         """
@@ -182,42 +179,40 @@ def run_super_ai_council(video_path, audience_signals):
     judge_prompt = f"""
     You are the CHIEF PRO REELS EDITOR of MAG73.
     User style preference: "{style_pref}"
-    Detected Language: {detected_lang}
     Vision Report: {vision_report}
     Dialogue Report: {dialogue_report}
 
-    STRICT RULES:
-    1. ONLY approve genuinely 92+/100 banger clips (12-35 seconds, tightly cut). NO boring driving/walking! If none exist, return [].
-    2. FACECAM: Keep the exact "facecam_box": [x, y, w, h] from Vision Report ONLY if a real human facecam exists and adds value; otherwise null.
-    3. VARIED EDIT STYLES ("edit_type") — NEVER edit every clip the same way:
-       - "aura": Epic/savage/sigma moment -> dark cinematic grade, B&W beat drop ("bw_drop_sec"), phonk BGM.
-       - "funny": Hilarious fail/roast -> NO heavy BGM, clean punchy look, optional title banner.
-       - "hype": Intense clutch/action -> vibrant colors, energetic BGM, NO B&W drop.
-       - "clean": Raw viral clip -> NO banner ("title_text": ""), NO BGM ("bgm_query": ""), NO SFX ("sfx_query": ""), just clean captions.
-    4. Leave "bgm_query", "sfx_query", and "title_text" as "" whenever the clip is better raw/clean.
+    STRICT PRO RULES:
+    1. ONLY approve genuinely 90+/100 banger clips (15-40s). Zero boring clips!
+    2. Choose the best "edit_type":
+       - "expose": Serious/exposé/storytelling -> dark suspense BGM (subtle), punchy hook title at top, NO cheesy meme SFX.
+       - "aura": Epic/savage/sigma moment -> phonk BGM, B&W beat drop ("bw_drop_sec") at peak, bass drop SFX.
+       - "funny": Hilarious roast/fail -> light upbeat/meme BGM, vine boom SFX ONLY at punchline.
+       - "hype": Gaming clutch/action -> energetic BGM, crisp colors, NO B&W drop.
+    3. HOOK TITLE ("title_text"): Always write a catchy 3-5 word viral hook in Hinglish/English (ASCII only, e.g. "ROTTEN MEAT EXPOSED!", "GLOVES KYUN NAHI PEHNE?").
+    4. BGM: Always pick a clean, fitting no-copyright BGM query ("bgm_query") matching the clip's vibe.
+    5. SFX: Only set "sfx_query" if there is a real punchline/beat drop (otherwise "").
 
     Return ONLY valid JSON array:
     [
       {{
-        "start": 40,
-        "end": 55,
-        "score": 94,
-        "edit_type": "funny",
-        "facecam_box": [0.0, 0.44, 0.22, 0.24],
+        "start": 10,
+        "end": 35,
+        "score": 93,
+        "edit_type": "expose",
+        "facecam_box": null,
         "focus_x": "center",
-        "title_text": "",
+        "title_text": "REALITY EXPOSED!",
         "bw_drop_sec": null,
-        "bgm_query": "",
+        "bgm_query": "ytsearch1:dark suspense documentary background music no copyright",
         "sfx_query": "",
-        "caption_color": "&H0000FFFF"
+        "caption_color": "&H00FFFFFF"
       }}
     ]
     """
     final_res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=judge_prompt)
     raw_clips = _clean_json(final_res.text)
 
-    # Hard filter: sirf 92+ banger moments rakho
-    clips = [c for c in raw_clips if int(c.get("score", 0)) >= 92]
-
-    print(f"[MAG73 Pro Editor] Approved {len(clips)} genuine 92+ banger clip(s)!")
+    clips = [c for c in raw_clips if int(c.get("score", 0)) >= 90]
+    print(f"[MAG73 Pro Editor] Approved {len(clips)} genuine 90+ banger clip(s)!")
     return clips, word_timestamps
