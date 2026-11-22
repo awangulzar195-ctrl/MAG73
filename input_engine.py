@@ -9,11 +9,8 @@ BROWSER_HEADERS = {
 }
 
 def _download_file(url, out_path="source_video.mp4"):
-    """GitHub private release asset ya direct URL se file download karta hai"""
     print(f"[MAG73] Downloading file from: {url}")
     headers = dict(BROWSER_HEADERS)
-
-    # Agar file GitHub Release API se aa rahi hai toh GitHub Token lagao
     if "api.github.com" in url:
         gh_token = os.getenv("GITHUB_TOKEN", "").strip()
         headers["Authorization"] = f"Bearer {gh_token}"
@@ -30,30 +27,6 @@ def _download_file(url, out_path="source_video.mp4"):
         raise RuntimeError("Downloaded file is empty or invalid!")
     print(f"[MAG73] Download complete! Size: {os.path.getsize(out_path) / (1024*1024):.2f} MB")
 
-def _download_via_cobalt_fallback(source_url, out_path="source_video.mp4"):
-    print("[MAG73 Fallback] Trying Cobalt public API bypass...")
-    instances = [
-        "https://api.cobalt.tools/",
-        "https://cobalt-api.kwiatekmiki.com/",
-        "https://co.wuk.sh/api/json"
-    ]
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "User-Agent": BROWSER_HEADERS["User-Agent"]
-    }
-    for api in instances:
-        try:
-            res = requests.post(api, json={"url": source_url, "videoQuality": "720"}, headers=headers, timeout=25)
-            if res.status_code == 200:
-                dl_url = res.json().get("url")
-                if dl_url:
-                    _download_file(dl_url, out_path)
-                    return True
-        except Exception as e:
-            print(f"[MAG73 Fallback] {api} failed: {e}")
-    return False
-
 def fetch_media(source_url, mode="vod"):
     print(f"[MAG73 Input Engine] Starting in {mode.upper()} mode...")
 
@@ -62,38 +35,40 @@ def fetch_media(source_url, mode="vod"):
         return "source_video.mp4", []
 
     cookies_env = os.getenv("YT_COOKIES", "").strip()
-    cookie_args = []
+    base_args = [
+        "--js-runtimes", "node",
+        "--remote-components", "ejs:github"
+    ]
     if cookies_env:
         with open("cookies.txt", "w", encoding="utf-8") as cf:
             cf.write(cookies_env)
-        cookie_args = ["--cookies", "cookies.txt"]
+        base_args.extend(["--cookies", "cookies.txt"])
+        print("[MAG73] Using YT_COOKIES + Node JS solver!")
 
+    # Step 1: Live Chat download (non-blocking)
     chat_cmd = [
         "yt-dlp", "--skip-download", "--write-subs", "--sub-langs", "live_chat",
-        "--extractor-args", "youtube:player_client=ios,mweb",
-        "-o", "source_video.%(ext)s", source_url
-    ] + cookie_args
+        "-o", "source_video.%(ext)s"
+    ] + base_args + [source_url]
     subprocess.run(chat_cmd, check=False)
 
+    # Step 2: Video + Audio download (default web/tv clients with cookies + JS solver)
     vid_cmd = [
         "yt-dlp",
-        "--extractor-args", "youtube:player_client=ios,mweb",
         "-f", "bv*[height<=1080]+ba/b[height<=1080]/best",
         "--merge-output-format", "mp4",
-        "-o", "source_video.mp4",
-        source_url
-    ] + cookie_args
+        "-o", "source_video.mp4"
+    ] + base_args
 
     if mode == "live":
-        vid_cmd.insert(1, "--live-from-start")
-        vid_cmd.extend(["--download-sections", "*00:00:00-00:05:00"])
+        vid_cmd.extend(["--live-from-start", "--download-sections", "*00:00:00-00:05:00"])
 
+    vid_cmd.append(source_url)
     result = subprocess.run(vid_cmd, capture_output=True, text=True)
 
     if result.returncode != 0 or not os.path.exists("source_video.mp4"):
-        success = _download_via_cobalt_fallback(source_url, "source_video.mp4")
-        if not success:
-            raise RuntimeError("YouTube blocked datacenter IP. Add YT_COOKIES secret or use Gallery Upload.")
+        print("[MAG73 yt-dlp ERROR]:", result.stderr[-600:])
+        raise RuntimeError(f"Video download failed: {result.stderr[-250:]}")
 
     chat_spikes = extract_chat_hype("source_video.live_chat.json")
     return "source_video.mp4", chat_spikes
