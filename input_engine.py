@@ -10,7 +10,7 @@ BROWSER_HEADERS = {
 }
 
 def _download_file(url, out_path="source_video.mp4"):
-    print(f"[MAG73] Downloading uploaded file...")
+    print("[MAG73] Downloading uploaded file...")
     headers = dict(BROWSER_HEADERS)
     if "api.github.com" in url:
         gh_token = os.getenv("GITHUB_TOKEN", "").strip()
@@ -28,7 +28,6 @@ def _download_file(url, out_path="source_video.mp4"):
         raise RuntimeError("Downloaded file is empty or invalid!")
 
 def _extract_comment_insights(info_json_path):
-    """YouTube comments se top timestamps aur sabse zyada discuss hue topics nikaalta hai"""
     if not os.path.exists(info_json_path):
         return {"timestamps": [], "top_comments": []}
     try:
@@ -38,7 +37,6 @@ def _extract_comment_insights(info_json_path):
         timestamps = {}
         top_comments = []
 
-        # Sort by likes
         comments.sort(key=lambda c: c.get("like_count", 0) or 0, reverse=True)
         for c in comments[:80]:
             text = (c.get("text") or "").strip()
@@ -46,28 +44,22 @@ def _extract_comment_insights(info_json_path):
                 continue
             if len(top_comments) < 20:
                 top_comments.append(text[:140])
-            # Find timestamps like 1:25, 12:04, 1:05:30
             for m in re.findall(r"\b(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\b", text):
                 h = int(m[0]) if m[0] else 0
-                mins = int(m[1])
-                secs = int(m[2])
-                total_sec = h * 3600 + mins * 60 + secs
+                total_sec = h * 3600 + int(m[1]) * 60 + int(m[2])
                 bucket = (total_sec // 5) * 5
                 timestamps[bucket] = timestamps.get(bucket, 0) + 1 + (c.get("like_count", 0) or 0) // 10
 
         sorted_ts = [t for t, _ in sorted(timestamps.items(), key=lambda x: x[1], reverse=True)[:12]]
-        print(f"[MAG73 Comments] Top Comment Timestamps (sec): {sorted_ts}")
         return {"timestamps": sorted_ts, "top_comments": top_comments}
-    except Exception as e:
-        print(f"[MAG73 Comments] Skipped: {e}")
+    except Exception:
         return {"timestamps": [], "top_comments": []}
 
 def extract_chat_hype(chat_file):
-    """Live chat ke bursts aur high-interaction timestamps nikaalta hai"""
     if not os.path.exists(chat_file):
         return []
     buckets = {}
-    hype_words = ["op", "wtf", "lol", "omg", "clip", "💀", "😂", "🔥", "bhai", "arey", "gg", "clutch", "sleep", "bro"]
+    hype_words = ["op", "wtf", "lol", "omg", "clip", "💀", "😂", "🔥", "bhai", "arey", "gg", "clutch"]
     with open(chat_file, "r", encoding="utf-8") as f:
         for line in f:
             try:
@@ -81,6 +73,25 @@ def extract_chat_hype(chat_file):
             except Exception:
                 continue
     return [t for t, _ in sorted(buckets.items(), key=lambda x: x[1], reverse=True)[:15]]
+
+def _capture_live_chunk(source_url, base_args, duration_sec=120):
+    """Ongoing live stream ko bina atke exact 2-minute chunk mein capture karta hai"""
+    print(f"[MAG73 Live Monitor] Capturing {duration_sec}s rolling live chunk...")
+    url_cmd = ["yt-dlp", "-f", "b[height<=720]/best", "-g"] + base_args + [source_url]
+    res = subprocess.run(url_cmd, capture_output=True, text=True, timeout=45)
+    stream_urls = [u.strip() for u in res.stdout.splitlines() if u.strip().startswith("http")]
+
+    if not stream_urls:
+        raise RuntimeError("Could not get live stream URL.")
+
+    # FFmpeg se exact 120s capture karo (never hangs!)
+    ff_cmd = [
+        "ffmpeg", "-y", "-i", stream_urls[0],
+        "-t", str(duration_sec),
+        "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac",
+        "source_video.mp4"
+    ]
+    subprocess.run(ff_cmd, timeout=duration_sec + 60, check=True)
 
 def fetch_media(source_url, mode="vod"):
     print(f"[MAG73 Input Engine] Starting in {mode.upper()} mode...")
@@ -99,39 +110,39 @@ def fetch_media(source_url, mode="vod"):
             cf.write(cookies_env)
         base_args.extend(["--cookies", "cookies.txt"])
 
-    # Step 1: Live Chat + Top 60 Comments metadata (non-blocking)
+    # LIVE MODE: Never hang on infinite live_chat — capture clean 2-min rolling chunk!
+    if mode == "live":
+        _capture_live_chunk(source_url, base_args, duration_sec=120)
+        return "source_video.mp4", {"chat_spikes": [], "comment_timestamps": [], "top_comments": []}
+
+    # VOD MODE: Grab top comments & chat replay (with strict 45s timeout so it never hangs)
     meta_cmd = [
         "yt-dlp", "--skip-download",
-        "--write-subs", "--sub-langs", "live_chat",
         "--write-info-json", "--get-comments",
         "--extractor-args", "youtube:max_comments=60,all,0,0",
         "-o", "source_video.%(ext)s"
     ] + base_args + [source_url]
-    subprocess.run(meta_cmd, check=False)
+    try:
+        subprocess.run(meta_cmd, timeout=45, check=False)
+    except subprocess.TimeoutExpired:
+        print("[MAG73] Metadata fetch timed out, continuing to video download...")
 
-    # Step 2: Fast 720p/1080p MP4 download
     vid_cmd = [
         "yt-dlp",
         "-f", "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080]/best",
         "--merge-output-format", "mp4",
         "-o", "source_video.mp4"
-    ] + base_args
+    ] + base_args + [source_url]
 
-    if mode == "live":
-        vid_cmd.extend(["--live-from-start", "--download-sections", "*00:00:00-00:05:00"])
-
-    vid_cmd.append(source_url)
     result = subprocess.run(vid_cmd, capture_output=True, text=True)
-
     if result.returncode != 0 or not os.path.exists("source_video.mp4"):
         raise RuntimeError(f"Video download failed: {result.stderr[-250:]}")
 
     chat_spikes = extract_chat_hype("source_video.live_chat.json")
     comment_data = _extract_comment_insights("source_video.info.json")
 
-    audience_signals = {
+    return "source_video.mp4", {
         "chat_spikes": chat_spikes,
         "comment_timestamps": comment_data["timestamps"],
         "top_comments": comment_data["top_comments"]
     }
-    return "source_video.mp4", audience_signals
