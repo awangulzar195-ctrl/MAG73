@@ -12,39 +12,68 @@ GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
 
 gemini_client = genai.Client(api_key=GEMINI_KEY) if GEMINI_KEY else None
 
+GROQ_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "gemma2-9b-it",
+]
+
+_working_groq_model = None
+
 
 def _call_groq(prompt, temperature=0.25):
-    """Fast, 14,400 req/day free Groq Llama-3.3-70B engine"""
+    """Multi-model Groq chat engine with automatic 404/rate-limit fallback."""
+    global _working_groq_model
     if not GROQ_KEY:
         return ""
-    try:
-        res = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROQ_KEY}"},
-            json={
-                "model": "llama-3.3-70b-versatile",
-                "temperature": temperature,
-                "messages": [{"role": "user", "content": prompt}]
-            },
-            timeout=60
-        )
-        if res.status_code == 200:
-            return res.json()["choices"][0]["message"]["content"]
-        print(f"[MAG73 Groq] HTTP {res.status_code}: {res.text[:150]}")
-    except Exception as e:
-        print(f"[MAG73 Groq] Error: {e}")
+
+    ordered_models = []
+    if _working_groq_model:
+        ordered_models.append(_working_groq_model)
+    for m in GROQ_MODELS:
+        if m not in ordered_models:
+            ordered_models.append(m)
+
+    last_err = ""
+    for model_name in ordered_models:
+        try:
+            res = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {GROQ_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model_name,
+                    "temperature": temperature,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=60,
+            )
+            if res.status_code == 200:
+                _working_groq_model = model_name
+                data = res.json()
+                choices = data.get("choices") or []
+                if choices:
+                    return choices[0].get("message", {}).get("content", "")
+            last_err = f"HTTP {res.status_code}: {res.text[:160]}"
+        except Exception as e:
+            last_err = str(e)
+
+    print(f"[MAG73 Groq] All models failed ({last_err})")
     return ""
 
 
 def _build_timestamped_transcript(words):
-    """Groq aur Gemini ke liye exact [12s] timestamped transcript banata hai"""
+    """Groq aur Gemini ke liye exact [12s] timestamped transcript banata hai."""
     if not words:
         return ""
     lines = []
-    bucket_start = int(words[0].get("start", 0))
+    bucket_start = int(float(words[0].get("start", 0)))
     curr = []
     for w in words:
-        ws = int(w.get("start", 0))
+        ws = int(float(w.get("start", 0)))
         if ws - bucket_start >= 6 and curr:
             lines.append(f"[{bucket_start}s] " + " ".join(curr))
             bucket_start = ws
@@ -58,14 +87,19 @@ def _build_timestamped_transcript(words):
 
 
 def extract_accurate_transcript(video_path="source_video.mp4"):
-    """Whisper language='hi' + Groq Roman Hinglish + exact timestamps"""
+    """Whisper language='hi' + Groq Roman Hinglish + exact timestamps."""
     if not GROQ_KEY:
         return "", [], "hi"
     try:
-        subprocess.run([
-            "ffmpeg", "-y", "-i", video_path,
-            "-vn", "-acodec", "libmp3lame", "-q:a", "4", "temp_audio.mp3"
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", video_path,
+                "-vn", "-acodec", "libmp3lame", "-q:a", "4", "temp_audio.mp3",
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
         with open("temp_audio.mp3", "rb") as f:
             res = requests.post(
@@ -76,16 +110,17 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
                     "model": "whisper-large-v3-turbo",
                     "language": "hi",
                     "response_format": "verbose_json",
-                    "timestamp_granularities[]": "word"
+                    "timestamp_granularities[]": "word",
                 },
-                timeout=120
+                timeout=120,
             )
         if res.status_code != 200:
+            print(f"[MAG73 Audio] Whisper HTTP {res.status_code}")
             return "", [], "hi"
 
         data = res.json()
-        words = data.get("words", [])
-        text = data.get("text", "")
+        words = data.get("words") or []
+        text = data.get("text") or ""
         print(f"[MAG73 Audio] Extracted {len(words)} words.")
 
         if words:
@@ -100,9 +135,9 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
 
 
 def _convert_words_to_hinglish_groq(words, full_context):
-    """Groq se 100% accurate Roman Hinglish conversion"""
+    """Groq se Roman Hinglish conversion with safe fallback."""
     try:
-        raw_list = [w.get("word", "").strip() for w in words]
+        raw_list = [str(w.get("word", "")).strip() for w in words]
         converted_all = []
         for i in range(0, len(raw_list), 70):
             chunk = raw_list[i:i + 70]
@@ -120,7 +155,7 @@ def _convert_words_to_hinglish_groq(words, full_context):
             match = re.search(r"\[.*\]", out, re.DOTALL)
             if match:
                 out_chunk = json.loads(match.group(0))
-                if len(out_chunk) == len(chunk):
+                if isinstance(out_chunk, list) and len(out_chunk) == len(chunk):
                     converted_all.extend(out_chunk)
                     continue
             converted_all.extend(chunk)
@@ -128,7 +163,7 @@ def _convert_words_to_hinglish_groq(words, full_context):
         for idx, w in enumerate(words):
             if idx < len(converted_all):
                 w["word"] = str(converted_all[idx])
-        print("[MAG73 Audio] Converted captions to 100% accurate Roman Hinglish via Groq!")
+        print("[MAG73 Audio] Roman Hinglish captions processed!")
     except Exception as e:
         print(f"[MAG73 Audio] Hinglish conversion warning: {e}")
     return words
@@ -146,7 +181,7 @@ def _wait_for_gemini_file(video_file):
 
 
 def _expert_gemini_vision(video_path, transcript_text, audience_signals):
-    """Sirf 1 Gemini call per video + automatic model fallback"""
+    """Sirf 1 Gemini call per video + automatic model fallback."""
     if not gemini_client:
         return "[]"
     try:
@@ -173,11 +208,11 @@ def _expert_gemini_vision(video_path, transcript_text, audience_signals):
             try:
                 res = gemini_client.models.generate_content(model=model_name, contents=[video_file, prompt])
                 print(f"[MAG73 Vision] Analyzed via {model_name}")
-                return res.text
+                return res.text or "[]"
             except Exception as e:
                 print(f"[MAG73 Vision] {model_name} skipped ({str(e)[:80]}), trying next...")
     except Exception as e:
-        print(f"[MAG73 Vision] Fallback to Groq-only mode: {e}")
+        print(f"[MAG73 Vision] Fallback to transcript/Groq mode: {e}")
     return "[]"
 
 
@@ -201,13 +236,32 @@ def _expert_groq_dialogue(transcript_text, audience_signals):
 
 
 def _clean_json(raw_text):
+    if not raw_text:
+        return []
     try:
         match = re.search(r"\[.*\]", raw_text, re.DOTALL)
         if match:
-            return json.loads(match.group(0))
+            parsed = json.loads(match.group(0))
+            if isinstance(parsed, list):
+                return parsed
     except Exception:
         pass
     return []
+
+
+def _get_video_duration_sec(video_path):
+    try:
+        out = subprocess.check_output(
+            [
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", video_path
+            ],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        return max(10.0, float(out))
+    except Exception:
+        return 60.0
 
 
 def run_super_ai_council(video_path, audience_signals):
@@ -259,10 +313,35 @@ def run_super_ai_council(video_path, audience_signals):
     """
     final_text = _call_groq(judge_prompt, temperature=0.2)
     raw_clips = _clean_json(final_text)
+    if not raw_clips:
+        raw_clips = _clean_json(vision_report)
+    if not raw_clips:
+        raw_clips = _clean_json(dialogue_report)
 
-    clips = [c for c in raw_clips if int(c.get("score", 80)) >= 80]
+    clips = [c for c in raw_clips if isinstance(c, dict) and int(c.get("score", 80)) >= 80]
     if not clips and raw_clips:
-        clips = [max(raw_clips, key=lambda x: int(x.get("score", 0)))]
+        dict_clips = [c for c in raw_clips if isinstance(c, dict)]
+        if dict_clips:
+            clips = [max(dict_clips, key=lambda x: int(x.get("score", 0)))]
 
-    print(f"[MAG73 Pro Editor] Approved {len(clips)} viral clip(s) via Groq Judge!")
+    if not clips:
+        dur = _get_video_duration_sec(video_path)
+        start_s = 0.0
+        end_s = min(dur, 25.0)
+        clips = [
+            {
+                "start": int(start_s),
+                "end": int(max(8.0, end_s)),
+                "score": 85,
+                "edit_type": style_pref if style_pref in ("aura", "hype", "funny", "expose", "clean") else "hype",
+                "facecam_box": None,
+                "focus_x": "center",
+                "title_text": "TOP MOMENT!",
+                "peak_sec": int(min(10.0, max(2.0, (end_s - start_s) * 0.5))),
+                "bgm_query": "ytsearch1:dark phonk gaming edit instrumental no copyright",
+                "sfx_query": "",
+            }
+        ]
+
+    print(f"[MAG73 Pro Editor] Approved {len(clips)} viral clip(s)!")
     return clips, word_timestamps
