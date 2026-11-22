@@ -24,10 +24,14 @@ def _ensure_pro_font():
     return FALLBACK_FONT, "DejaVu Sans"
 
 def _fetch_audio(query, out_prefix):
-    """Cookies + JS solver ke saath YouTube se BGM/SFX download karta hai"""
+    """Sirf tabhi BGM/SFX download karta hai jab query non-empty ho"""
+    query = (query or "").strip()
+    if not query:
+        return None
+
     out_file = f"{out_prefix}.mp3"
-    if os.path.exists(out_file) or not query:
-        return out_file if os.path.exists(out_file) else None
+    if os.path.exists(out_file):
+        return out_file
 
     q = query if query.startswith("ytsearch") else f"ytsearch1:{query}"
     cmd = [
@@ -58,12 +62,11 @@ def _ascii_only(text):
     return re.sub(r"[^A-Za-z0-9 !?@#,.-]", "", text).strip()
 
 def generate_captions(words, clip_start, clip_end, color_hex, font_name, is_split, ass_path):
-    """Clean, bold pro Hinglish/English captions (Split-screen mein center seam par)"""
+    """Clean, accurate Hinglish/English captions (Split-screen mein center seam par)"""
     clip_words = [w for w in words if w.get("start", 0) >= clip_start and w.get("end", 0) <= clip_end]
     if not clip_words:
         return None
 
-    # Split-screen mein captions center seam (920px) par rakho taaki facecam na dhake
     margin_v = 900 if is_split else 360
     font_size = 76 if is_split else 82
 
@@ -98,8 +101,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 def _build_layout_graph(layout, facecam_pos, focus_x):
     """
-    split_facecam: Top 1080x960 Gameplay + Bottom 1080x960 Streamer Facecam
-    full_vertical: Smart 9:16 subject framing
+    split_facecam: Top 1080x960 Gameplay + Bottom 1080x960 Real Human Facecam
+    full_vertical: Clean 9:16 framing
     """
     if layout == "split_facecam" and facecam_pos in ("bottom_right", "bottom_left", "top_right", "top_left"):
         if facecam_pos == "bottom_right":
@@ -133,17 +136,17 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     end = float(clip_data.get("end", start + 25))
     duration = max(8.0, min(55.0, end - start))
 
-    edit_type = re.sub(r"[^a-zA-Z0-9_]", "", str(clip_data.get("edit_type", "pro"))).lower() or "pro"
+    edit_type = re.sub(r"[^a-zA-Z0-9_]", "", str(clip_data.get("edit_type", "clean"))).lower() or "clean"
     layout = str(clip_data.get("layout", "full_vertical")).lower()
     facecam_pos = str(clip_data.get("facecam_pos", "none")).lower()
     focus_x = str(clip_data.get("focus_x", "center")).lower()
     title_text = _ascii_only(str(clip_data.get("title_text", ""))).upper()
     caption_color = str(clip_data.get("caption_color", "&H0000FFFF"))
 
-    # Optional Black & White Punchline / Aura Drop timestamp (relative to clip start)
+    # B&W Drop sirf aura/funny mein jab AI ne explicit bw_drop_sec diya ho
     bw_drop = clip_data.get("bw_drop_sec", None)
     try:
-        bw_drop = float(bw_drop) if bw_drop is not None else None
+        bw_drop = float(bw_drop) if (bw_drop is not None and edit_type in ("aura", "funny")) else None
         if bw_drop is not None and (bw_drop < 2.0 or bw_drop > duration - 1.0):
             bw_drop = None
     except Exception:
@@ -152,25 +155,39 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     is_split = (layout == "split_facecam" and facecam_pos != "none")
     output_file = f"MAG73_{edit_type.upper()}_Clip_{index + 1}.mp4"
 
-    bgm_file = _fetch_audio(clip_data.get("bgm_query", "ytsearch1:trending phonk beat no copyright"), f"bgm_{index}")
+    # NO forced default BGM — sirf wahi download karo jo AI ne decide kiya hai
+    bgm_file = _fetch_audio(clip_data.get("bgm_query", ""), f"bgm_{index}")
     sfx_file = _fetch_audio(clip_data.get("sfx_query", ""), f"sfx_{index}")
     ass_file = generate_captions(word_timestamps, start, start + duration, caption_color, font_name, is_split, f"cap_{index}.ass")
 
-    # 1. Base Layout (Split-Screen or Full Vertical)
+    # 1. Base Layout
     layout_graph = _build_layout_graph(layout, facecam_pos, focus_x)
 
-    # 2. Pro Post-Processing (Clean color + B&W Punchline Drop + Sleek Banner + Captions)
-    post_vf = ["eq=contrast=1.06:saturation=1.08"]
+    # 2. Style-based Post-Processing
+    if edit_type == "aura":
+        post_vf = ["eq=contrast=1.10:saturation=1.12"]
+    elif edit_type == "clutch":
+        post_vf = ["eq=contrast=1.08:saturation=1.14"]
+    else:
+        post_vf = ["eq=contrast=1.03:saturation=1.05"]
 
     if bw_drop is not None:
         post_vf.append(f"hue=s=0:enable='gte(t,{bw_drop:.2f})'")
-        post_vf.append(f"eq=contrast=1.18:enable='gte(t,{bw_drop:.2f})'")
+        post_vf.append(f"eq=contrast=1.20:enable='gte(t,{bw_drop:.2f})'")
 
     if title_text:
-        banner_bg = "0xC81E1E@0.90" if edit_type in ("funny", "hype") else "0x111318@0.88"
+        if edit_type == "funny":
+            banner_bg = "0xC81E1E@0.90"
+        elif edit_type == "aura":
+            banner_bg = "0x0B0D12@0.90"
+        elif edit_type == "clutch":
+            banner_bg = "0x1E293B@0.88"
+        else:
+            banner_bg = "0x111318@0.78"
+
         post_vf.append(
-            f"drawtext=fontfile={font_path}:text='{title_text}':fontcolor=white:fontsize=48:"
-            f"box=1:boxcolor={banner_bg}:boxborderw=20:x=(w-text_w)/2:y=140:enable='between(t,0,4.5)'"
+            f"drawtext=fontfile={font_path}:text='{title_text}':fontcolor=white:fontsize=46:"
+            f"box=1:boxcolor={banner_bg}:boxborderw=18:x=(w-text_w)/2:y=140:enable='between(t,0,4.0)'"
         )
 
     if ass_file and os.path.exists(ass_file):
@@ -179,15 +196,17 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     video_chain = f"{layout_graph}[base]{','.join(post_vf)}[v];"
     cmd = ["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", video_path]
 
-    # 3. Audio Mixing (Voice + Audible BGM + Punchline-Synced SFX)
+    # 3. Clean Audio Mixing (Voice always clear; BGM volume tuned by style)
+    bgm_vol = "0.26" if edit_type in ("aura", "clutch") else "0.16"
+
     if bgm_file and sfx_file:
         cmd.extend(["-stream_loop", "-1", "-i", bgm_file, "-i", sfx_file])
         sfx_delay_ms = int(bw_drop * 1000) if bw_drop is not None else 0
-        sfx_filter = f"atrim=0:2.0,adelay={sfx_delay_ms}|{sfx_delay_ms},volume=0.60" if sfx_delay_ms > 0 else "atrim=0:2.0,volume=0.55"
+        sfx_filter = f"atrim=0:1.8,adelay={sfx_delay_ms}|{sfx_delay_ms},volume=0.55" if sfx_delay_ms > 0 else "atrim=0:1.8,volume=0.50"
         fc = (
             f"{video_chain}"
             f"[0:a]volume=1.15[voice];"
-            f"[1:a]volume=0.28[bgm];"
+            f"[1:a]volume={bgm_vol}[bgm];"
             f"[2:a]{sfx_filter}[sfx];"
             f"[voice][bgm][sfx]amix=inputs=3:duration=first:dropout_transition=2:normalize=0[a]"
         )
@@ -196,8 +215,18 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         fc = (
             f"{video_chain}"
             f"[0:a]volume=1.15[voice];"
-            f"[1:a]volume=0.28[bgm];"
+            f"[1:a]volume={bgm_vol}[bgm];"
             f"[voice][bgm]amix=inputs=2:duration=first:normalize=0[a]"
+        )
+    elif sfx_file:
+        cmd.extend(["-i", sfx_file])
+        sfx_delay_ms = int(bw_drop * 1000) if bw_drop is not None else 0
+        sfx_filter = f"atrim=0:1.8,adelay={sfx_delay_ms}|{sfx_delay_ms},volume=0.55" if sfx_delay_ms > 0 else "atrim=0:1.8,volume=0.50"
+        fc = (
+            f"{video_chain}"
+            f"[0:a]volume=1.15[voice];"
+            f"[1:a]{sfx_filter}[sfx];"
+            f"[voice][sfx]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]"
         )
     else:
         fc = f"{video_chain}[0:a]anull[a]"
@@ -209,7 +238,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         output_file
     ])
 
-    print(f"[MAG73 Pro Editor] Rendering {output_file} | Layout: {layout} | B&W Drop: {bw_drop}")
+    print(f"[MAG73 Pro Editor] Rendering {output_file} | Style: {edit_type} | Layout: {layout} | B&W Drop: {bw_drop}")
     subprocess.run(cmd, check=True)
 
     # 4. Save Cover Thumbnail (.jpg) in output_clips/
