@@ -36,8 +36,29 @@ def _call_groq(prompt, temperature=0.25):
     return ""
 
 
+def _build_timestamped_transcript(words):
+    """Groq aur Gemini ke liye exact [12s] timestamped transcript banata hai"""
+    if not words:
+        return ""
+    lines = []
+    bucket_start = int(words[0].get("start", 0))
+    curr = []
+    for w in words:
+        ws = int(w.get("start", 0))
+        if ws - bucket_start >= 6 and curr:
+            lines.append(f"[{bucket_start}s] " + " ".join(curr))
+            bucket_start = ws
+            curr = []
+        txt = str(w.get("word", "")).strip()
+        if txt:
+            curr.append(txt)
+    if curr:
+        lines.append(f"[{bucket_start}s] " + " ".join(curr))
+    return "\n".join(lines)
+
+
 def extract_accurate_transcript(video_path="source_video.mp4"):
-    """Whisper language='hi' (bina hallucination prompt ke) + Groq Roman Hinglish"""
+    """Whisper language='hi' + Groq Roman Hinglish + exact timestamps"""
     if not GROQ_KEY:
         return "", [], "hi"
     try:
@@ -69,7 +90,8 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
 
         if words:
             words = _convert_words_to_hinglish_groq(words, text)
-            text = " ".join(w.get("word", "") for w in words)
+            ts_text = _build_timestamped_transcript(words)
+            return ts_text, words, "hi"
 
         return text, words, "hi"
     except Exception as e:
@@ -78,7 +100,7 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
 
 
 def _convert_words_to_hinglish_groq(words, full_context):
-    """Groq se 100% accurate Roman Hinglish conversion (ZERO Gemini quota used!)"""
+    """Groq se 100% accurate Roman Hinglish conversion"""
     try:
         raw_list = [w.get("word", "").strip() for w in words]
         converted_all = []
@@ -124,7 +146,7 @@ def _wait_for_gemini_file(video_file):
 
 
 def _expert_gemini_vision(video_path, transcript_text, audience_signals):
-    """Sirf 1 Gemini call per video + automatic model fallback (kabhi 429 par crash nahi hoga!)"""
+    """Sirf 1 Gemini call per video + automatic model fallback"""
     if not gemini_client:
         return "[]"
     try:
@@ -132,20 +154,20 @@ def _expert_gemini_vision(video_path, transcript_text, audience_signals):
         video_file = _wait_for_gemini_file(uploaded_file)
 
         prompt = f"""
-        You are an ULTRA-STRICT VIRAL REELS DIRECTOR.
+        You are a PRO VIRAL REELS DIRECTOR.
         Analyze the video + audience signals:
         - Live Chat Spikes (sec): {audience_signals.get('chat_spikes', [])}
         - Top Comment Timestamps (sec): {audience_signals.get('comment_timestamps', [])}
 
         RULES:
-        1. ONLY pick genuinely INSANE, HILARIOUS, CLUTCH, or SHOCKING moments (score >= 90/100, 14-35s).
-           If there is NO genuine 90+ moment, return [].
-        2. REAL HUMAN FACECAM CHECK: ONLY set "facecam_box": [x, y, w, h] (normalized 0.0-1.0) if a REAL HUMAN PERSON is clearly visible in a webcam overlay AND their face reaction adds value. NEVER crop a minimap or HUD! Otherwise null.
-        3. Identify the exact "peak_sec" (seconds from clip start where the kill/punchline/drop hits).
+        1. Pick the TOP 1 to 3 best, complete viral/funny/clutch/exposing moments (15-38s, score 80-100).
+        2. REAL HUMAN FACECAM CHECK: ONLY set "facecam_box": [x, y, w, h] if a REAL HUMAN PERSON is clearly visible in a webcam overlay (never minimap/HUD). Otherwise null.
+        3. Identify "peak_sec" (seconds from clip start where the kill/punchline/drop hits).
 
         Return JSON list:
-        [{{"start": int, "end": int, "score": 90-100, "peak_sec": int, "facecam_box": null, "focus_x": "center", "reason": "..."}}]
-        Transcript: {transcript_text[:8000]}
+        [{{"start": int, "end": int, "score": 80-100, "peak_sec": int, "facecam_box": null, "focus_x": "center", "reason": "..."}}]
+        Timestamped Transcript:
+        {transcript_text[:8000]}
         """
         for model_name in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"):
             try:
@@ -163,13 +185,17 @@ def _expert_groq_dialogue(transcript_text, audience_signals):
     if not transcript_text:
         return "[]"
     prompt = f"""
-    Find ONLY 90+/100 genuinely hilarious, savage, shocking, or peak hype dialogue moments (14-35s).
-    Ignore boring/normal talk. Include "peak_sec" (seconds from clip start where punchline hits).
+    You are a viral short-form video director.
+    Read this TIMESTAMPED transcript (each line starts with [Xs] seconds) and pick the TOP 1 to 3 most engaging, funny, shocking, or high-hype complete moments (15-38 seconds each).
     Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
     Top Comments: {audience_signals.get('top_comments', [])[:10]}
     Chat Spikes: {audience_signals.get('chat_spikes', [])}
-    Transcript: {transcript_text[:14000]}
-    Return ONLY JSON list with start, end, score, peak_sec, reason.
+
+    Timestamped Transcript:
+    {transcript_text[:14000]}
+
+    Return ONLY a JSON list:
+    [{{"start": 10, "end": 32, "score": 88, "peak_sec": 15, "reason": "..."}}]
     """
     return _call_groq(prompt, temperature=0.3)
 
@@ -204,12 +230,12 @@ def run_super_ai_council(video_path, audience_signals):
     Vision Report: {vision_report}
     Dialogue Report: {dialogue_report}
 
-    STRICT PRO RULES:
-    1. ONLY approve genuinely 90+/100 banger clips (14-35s, complete setup -> punchline). Zero boring clips! If none exist, return [].
+    RULES:
+    1. Approve the TOP 1 to 3 best complete moments (15-38s, score >= 80). Always pick the strongest moment(s) from the reports.
     2. Choose the best "edit_type":
        - "aura": Epic clutch / sigma / savage moment -> phonk BGM, B&W drop at "peak_sec", bass drop SFX.
        - "hype": Fast gaming action / esports -> energetic subtle BGM, crisp colors, NO B&W drop.
-       - "funny": Hilarious roast / fail -> raw comedy timing (no BGM), optional vine boom SFX only at "peak_sec".
+       - "funny": Hilarious roast / fail -> raw comedy timing (no BGM), optional vine boom SFX at "peak_sec".
        - "expose": Serious exposé / storytelling -> dark suspense subtle BGM, punchy hook title, NO SFX.
        - "clean": Pure raw viral clip -> no BGM, no SFX, no banner, just pro captions.
     3. HOOK TITLE ("title_text"): Catchy 3-5 word viral hook in Hinglish/English (ASCII only), or "" for clean.
@@ -219,12 +245,12 @@ def run_super_ai_council(video_path, audience_signals):
     [
       {{
         "start": 10,
-        "end": 30,
-        "score": 93,
+        "end": 32,
+        "score": 89,
         "edit_type": "hype",
         "facecam_box": null,
         "focus_x": "center",
-        "title_text": "INSANE 1V4 CLUTCH!",
+        "title_text": "INSANE MOMENT!",
         "peak_sec": 14,
         "bgm_query": "ytsearch1:dark phonk gaming edit instrumental no copyright",
         "sfx_query": ""
@@ -234,6 +260,9 @@ def run_super_ai_council(video_path, audience_signals):
     final_text = _call_groq(judge_prompt, temperature=0.2)
     raw_clips = _clean_json(final_text)
 
-    clips = [c for c in raw_clips if int(c.get("score", 0)) >= 90]
-    print(f"[MAG73 Pro Editor] Approved {len(clips)} genuine 90+ banger clip(s) via Groq Judge!")
+    clips = [c for c in raw_clips if int(c.get("score", 80)) >= 80]
+    if not clips and raw_clips:
+        clips = [max(raw_clips, key=lambda x: int(x.get("score", 0)))]
+
+    print(f"[MAG73 Pro Editor] Approved {len(clips)} viral clip(s) via Groq Judge!")
     return clips, word_timestamps
