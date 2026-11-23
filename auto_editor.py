@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import shutil
 import subprocess
 import requests
@@ -7,6 +8,24 @@ import requests
 FALLBACK_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 PRO_FONT_FILE = "Montserrat-ExtraBold.ttf"
 PRO_FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-ExtraBold.ttf"
+
+
+def _get_plugin_config():
+    defaults = {
+        "caption_lang": "hinglish",
+        "bgm_enabled": True,
+        "sfx_enabled": True,
+        "banner_enabled": True,
+    }
+    raw = os.getenv("PLUGIN_CONFIG", "").strip()
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                defaults.update(parsed)
+        except Exception:
+            pass
+    return defaults
 
 
 def _ensure_pro_font():
@@ -89,11 +108,7 @@ def _clean_text(text):
 
 
 def generate_pro_captions(words, clip_start, clip_end, font_name, is_split, ass_path):
-    """
-    Clean word-by-word highlighted captions:
-    - Har word ki duration max 1.0s rakhi gayi hai taaki caption kabhi stuck na ho
-    - Active word highlight + crisp outline
-    """
+    """Clean word-by-word highlighted captions with stuck-caption protection."""
     raw_clip_words = []
     for w in (words or []):
         ws = float(w.get("start", 0))
@@ -193,10 +208,8 @@ def _parse_facecam_box(box):
         return None
 
 
-def _build_layout_graph(facecam_box, focus_x, duration, edit_type):
-    """
-    Dynamic 9:16 framing with subtle alive motion (avoids static flat crop feel).
-    """
+def _build_layout_graph(facecam_box, focus_x, duration):
+    """Dynamic 9:16 framing with subtle alive motion."""
     if facecam_box is not None:
         fx, fy, fw, fh = facecam_box
         return (
@@ -209,7 +222,6 @@ def _build_layout_graph(facecam_box, focus_x, duration, edit_type):
         )
 
     base_x = "(iw-1080)*0.18" if focus_x == "left" else ("(iw-1080)*0.82" if focus_x == "right" else "(iw-1080)/2")
-    # Gentle slow push-in (1.00 -> 1.06) so the frame feels edited and alive
     return (
         f"[0:v]scale=1166:2074:force_original_aspect_ratio=increase,"
         f"crop=w='1166-(86*min(t/{max(1.0, duration):.2f},1))':"
@@ -219,6 +231,12 @@ def _build_layout_graph(facecam_box, focus_x, duration, edit_type):
 
 
 def render_pro_short(video_path, clip_data, word_timestamps, index):
+    plugin_cfg = _get_plugin_config()
+    caption_lang = str(plugin_cfg.get("caption_lang", "hinglish")).lower()
+    bgm_enabled = bool(plugin_cfg.get("bgm_enabled", True))
+    sfx_enabled = bool(plugin_cfg.get("sfx_enabled", True))
+    banner_enabled = bool(plugin_cfg.get("banner_enabled", True))
+
     font_path, font_name = _ensure_pro_font()
 
     start = max(0.0, float(clip_data.get("start", 0)))
@@ -228,7 +246,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     edit_type = re.sub(r"[^a-zA-Z0-9_]", "", str(clip_data.get("edit_type", "drama"))).lower() or "drama"
     facecam_box = _parse_facecam_box(clip_data.get("facecam_box", None))
     focus_x = str(clip_data.get("focus_x", "center")).lower()
-    title_text = _clean_text(clip_data.get("title_text", "")).upper()
+    title_text = _clean_text(clip_data.get("title_text", "")).upper() if banner_enabled else ""
 
     peak_raw = clip_data.get("peak_sec", clip_data.get("bw_drop_sec", None))
     try:
@@ -241,13 +259,15 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     is_split = (facecam_box is not None)
     output_file = f"MAG73_{edit_type.upper()}_Clip_{index + 1}.mp4"
 
-    bgm_file = _fetch_audio(clip_data.get("bgm_query", ""), f"bgm_{index}") if edit_type != "clean" else None
-    sfx_file = _fetch_audio(clip_data.get("sfx_query", ""), f"sfx_{index}") if (edit_type in ("aura", "funny") and peak_sec is not None) else None
-    ass_file = generate_pro_captions(word_timestamps, start, start + duration, font_name, is_split, f"cap_{index}.ass")
+    bgm_file = _fetch_audio(clip_data.get("bgm_query", ""), f"bgm_{index}") if (bgm_enabled and edit_type != "clean") else None
+    sfx_file = _fetch_audio(clip_data.get("sfx_query", ""), f"sfx_{index}") if (sfx_enabled and edit_type in ("aura", "funny") and peak_sec is not None) else None
 
-    layout_graph = _build_layout_graph(facecam_box, focus_x, duration, edit_type)
+    ass_file = None
+    if caption_lang != "off":
+        ass_file = generate_pro_captions(word_timestamps, start, start + duration, font_name, is_split, f"cap_{index}.ass")
 
-    # Distinct visual grading per moment type (never one-size-fits-all)
+    layout_graph = _build_layout_graph(facecam_box, focus_x, duration)
+
     if edit_type == "aura":
         post_vf = ["eq=contrast=1.12:saturation=0.92:brightness=-0.02", "vignette=PI/7"]
         if peak_sec is not None:
@@ -327,7 +347,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         output_file,
     ])
 
-    print(f"[MAG73 Pro Editor] Rendering {output_file} | Style: {edit_type} | Peak: {peak_sec}")
+    print(f"[MAG73 Pro Editor] Rendering {output_file} | Style: {edit_type} | Caption: {caption_lang}")
     subprocess.run(cmd, check=True)
 
     os.makedirs("output_clips", exist_ok=True)
