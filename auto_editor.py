@@ -10,7 +10,7 @@ PRO_FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/f
 
 
 def _ensure_pro_font():
-    """Montserrat-ExtraBold download karke system font cache mein register karta hai"""
+    """Montserrat-ExtraBold download karke system font cache mein register karta hai."""
     if not os.path.exists(PRO_FONT_FILE):
         try:
             r = requests.get(PRO_FONT_URL, timeout=15)
@@ -25,8 +25,12 @@ def _ensure_pro_font():
             font_dir = os.path.expanduser("~/.local/share/fonts")
             os.makedirs(font_dir, exist_ok=True)
             shutil.copy(PRO_FONT_FILE, os.path.join(font_dir, PRO_FONT_FILE))
-            subprocess.run(["fc-cache", "-f"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print("[MAG73 Font] Registered Montserrat ExtraBold!")
+            subprocess.run(
+                ["fc-cache", "-f"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
             return PRO_FONT_FILE, "Montserrat ExtraBold"
         except Exception:
             return PRO_FONT_FILE, "Montserrat ExtraBold"
@@ -34,21 +38,26 @@ def _ensure_pro_font():
 
 
 def _fetch_audio(query, out_prefix):
-    """Sirf valid non-empty query hone par audio download karta hai"""
+    """Sirf tabhi audio fetch karta hai jab valid query di gayi ho."""
     query = (query or "").strip()
     if not query:
         return None
+
     out_file = f"{out_prefix}.mp3"
     if os.path.exists(out_file) and os.path.getsize(out_file) > 10000:
         return out_file
 
     q = query if query.startswith("ytsearch") else f"ytsearch1:{query}"
     cmd = [
-        "yt-dlp", "-x", "--audio-format", "mp3",
-        "--max-filesize", "12M",
-        "--js-runtimes", "node",
-        "--remote-components", "ejs:github",
-        "-o", f"{out_prefix}.%(ext)s"
+        "yt-dlp",
+        "-x",
+        "--audio-format",
+        "mp3",
+        "--max-filesize",
+        "10M",
+        "--no-playlist",
+        "-o",
+        f"{out_prefix}.%(ext)s",
     ]
     if os.path.exists("cookies.txt"):
         cmd.extend(["--cookies", "cookies.txt"])
@@ -56,7 +65,6 @@ def _fetch_audio(query, out_prefix):
 
     subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if os.path.exists(out_file) and os.path.getsize(out_file) > 10000:
-        print(f"[MAG73 Audio] Ready: {out_file}")
         return out_file
     return None
 
@@ -74,7 +82,7 @@ def _format_ass_time(seconds):
 
 
 def _clean_text(text):
-    """FFmpeg drawtext aur ASS ke liye clean ASCII text"""
+    """ASS aur drawtext ke liye clean ASCII text."""
     text = re.sub(r"[^A-Za-z0-9 !?@#,.-]", "", str(text or ""))
     text = text.replace(":", "").replace("'", "")
     return re.sub(r"\s+", " ", text).strip()
@@ -82,32 +90,29 @@ def _clean_text(text):
 
 def generate_pro_captions(words, clip_start, clip_end, font_name, is_split, ass_path):
     """
-    Studio-Grade Word-by-Word Active Highlight Captions:
-    - 2-3 words per clean line
-    - Currently spoken word highlighted in Yellow, others Crisp White
-    - Stuck-caption protection: koi bhi word 1.2s se zyada screen par nahi atkega
+    Clean word-by-word highlighted captions:
+    - Har word ki duration max 1.0s rakhi gayi hai taaki caption kabhi stuck na ho
+    - Active word highlight + crisp outline
     """
     raw_clip_words = []
     for w in (words or []):
         ws = float(w.get("start", 0))
-        we = float(w.get("end", ws + 0.3))
+        we = float(w.get("end", ws + 0.25))
         txt = _clean_text(w.get("word", "")).upper()
         if not txt:
             continue
         if we >= clip_start and ws <= clip_end:
             rel_s = max(0.0, ws - clip_start)
             rel_e = min(clip_end - clip_start, we - clip_start)
-            # Stuck-caption protection: cap max single-word duration to 1.15s
-            if rel_e - rel_s > 1.15:
-                rel_e = rel_s + 0.95
+            if rel_e - rel_s > 1.0:
+                rel_e = rel_s + 0.85
             if rel_e - rel_s < 0.12:
-                rel_e = rel_s + 0.22
+                rel_e = rel_s + 0.20
             raw_clip_words.append({"word": txt, "start": rel_s, "end": rel_e})
 
     if not raw_clip_words:
         return None
 
-    # Group into clean 2-3 word chunks (max 15 chars per line, break on >0.6s pause)
     chunks = []
     current = []
     for w in raw_clip_words:
@@ -116,7 +121,7 @@ def generate_pro_captions(words, clip_start, clip_end, font_name, is_split, ass_
             continue
         gap = w["start"] - current[-1]["end"]
         curr_len = sum(len(x["word"]) + 1 for x in current)
-        if len(current) >= 3 or (curr_len + len(w["word"]) > 15) or gap > 0.65:
+        if len(current) >= 3 or (curr_len + len(w["word"]) > 16) or gap > 0.55:
             chunks.append(current)
             current = [w]
         else:
@@ -124,8 +129,8 @@ def generate_pro_captions(words, clip_start, clip_end, font_name, is_split, ass_
     if current:
         chunks.append(current)
 
-    margin_v = 910 if is_split else 340
-    font_size = 74 if is_split else 84
+    margin_v = 910 if is_split else 330
+    font_size = 72 if is_split else 82
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -135,7 +140,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},{font_size},&H00FFFFFF,&H0000E5FF,&H00000000,&H99000000,-1,0,0,0,100,100,1,0,1,7,4,2,60,60,{margin_v},1
+Style: Default,{font_name},{font_size},&H00FFFFFF,&H0000E5FF,&H00000000,&H99000000,-1,0,0,0,100,100,1,0,1,7,3,2,60,60,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -145,14 +150,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         for active_idx, active_w in enumerate(chunk):
             ev_start = active_w["start"]
             if active_idx + 1 < len(chunk):
-                ev_end = min(active_w["end"] + 0.12, chunk[active_idx + 1]["start"])
+                ev_end = min(active_w["end"] + 0.08, chunk[active_idx + 1]["start"])
                 if ev_end <= ev_start:
                     ev_end = chunk[active_idx + 1]["start"]
             else:
-                ev_end = active_w["end"] + 0.10
+                ev_end = active_w["end"] + 0.08
 
             if ev_end - ev_start < 0.08:
-                ev_end = ev_start + 0.15
+                ev_end = ev_start + 0.14
 
             styled_parts = []
             for idx, w_obj in enumerate(chunk):
@@ -162,9 +167,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     styled_parts.append(w_obj["word"])
 
             line_text = " ".join(styled_parts)
-            # Subtle pop-in only on the first word of a new chunk
             if active_idx == 0:
-                line_text = r"{\fscx92\fscy92\t(0,55,\fscx103\fscy103)\t(55,110,\fscx100\fscy100)}" + line_text
+                line_text = r"{\fscx94\fscy94\t(0,50,\fscx103\fscy103)\t(50,100,\fscx100\fscy100)}" + line_text
 
             events.append(
                 f"Dialogue: 0,{_format_ass_time(ev_start)},{_format_ass_time(ev_end)},Default,,0,0,0,,{line_text}"
@@ -189,10 +193,9 @@ def _parse_facecam_box(box):
         return None
 
 
-def _build_layout_graph(facecam_box, focus_x):
+def _build_layout_graph(facecam_box, focus_x, duration, edit_type):
     """
-    Split-Screen (Top Gameplay 1080x958 + 4px Dark Divider + Bottom Facecam 1080x958)
-    OR Full Vertical 1080x1920
+    Dynamic 9:16 framing with subtle alive motion (avoids static flat crop feel).
     """
     if facecam_box is not None:
         fx, fy, fw, fh = facecam_box
@@ -205,32 +208,32 @@ def _build_layout_graph(facecam_box, focus_x):
             f"[top][div][bot]vstack=inputs=3:shortest=1[base];"
         )
 
-    if focus_x == "left":
-        x_expr = "(iw-1080)*0.18"
-    elif focus_x == "right":
-        x_expr = "(iw-1080)*0.82"
-    else:
-        x_expr = "(iw-1080)/2"
-    return f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:{x_expr}:(ih-1920)/2,setsar=1[base];"
+    base_x = "(iw-1080)*0.18" if focus_x == "left" else ("(iw-1080)*0.82" if focus_x == "right" else "(iw-1080)/2")
+    # Gentle slow push-in (1.00 -> 1.06) so the frame feels edited and alive
+    return (
+        f"[0:v]scale=1166:2074:force_original_aspect_ratio=increase,"
+        f"crop=w='1166-(86*min(t/{max(1.0, duration):.2f},1))':"
+        f"h='2074-(154*min(t/{max(1.0, duration):.2f},1))':"
+        f"x='({base_x})*1.08':y='(ih-oh)/2',scale=1080:1920,setsar=1[base];"
+    )
 
 
 def render_pro_short(video_path, clip_data, word_timestamps, index):
     font_path, font_name = _ensure_pro_font()
 
     start = max(0.0, float(clip_data.get("start", 0)))
-    end = float(clip_data.get("end", start + 25))
-    duration = max(8.0, min(42.0, end - start))
+    end = float(clip_data.get("end", start + 18))
+    duration = max(8.0, min(35.0, end - start))
 
-    edit_type = re.sub(r"[^a-zA-Z0-9_]", "", str(clip_data.get("edit_type", "hype"))).lower() or "hype"
+    edit_type = re.sub(r"[^a-zA-Z0-9_]", "", str(clip_data.get("edit_type", "drama"))).lower() or "drama"
     facecam_box = _parse_facecam_box(clip_data.get("facecam_box", None))
     focus_x = str(clip_data.get("focus_x", "center")).lower()
     title_text = _clean_text(clip_data.get("title_text", "")).upper()
 
-    # Peak moment timestamp (relative to clip start)
     peak_raw = clip_data.get("peak_sec", clip_data.get("bw_drop_sec", None))
     try:
         peak_sec = float(peak_raw) if peak_raw is not None else None
-        if peak_sec is not None and (peak_sec < 2.0 or peak_sec > duration - 1.0):
+        if peak_sec is not None and (peak_sec < 1.5 or peak_sec > duration - 1.0):
             peak_sec = None
     except Exception:
         peak_sec = None
@@ -238,40 +241,31 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     is_split = (facecam_box is not None)
     output_file = f"MAG73_{edit_type.upper()}_Clip_{index + 1}.mp4"
 
-    # Tasteful Audio Policy:
-    # - 'clean' -> zero BGM, zero SFX
-    # - 'funny' -> zero BGM (keep comedy timing raw), optional subtle SFX only at peak
-    # - 'aura'/'hype'/'expose' -> subtle BGM with smooth fade-in/out; SFX only for 'aura' at peak
-    bgm_file = None
-    sfx_file = None
-    if edit_type in ("aura", "hype", "expose"):
-        bgm_file = _fetch_audio(clip_data.get("bgm_query", ""), f"bgm_{index}")
-    if edit_type in ("aura", "funny") and peak_sec is not None:
-        sfx_file = _fetch_audio(clip_data.get("sfx_query", ""), f"sfx_{index}")
-
+    bgm_file = _fetch_audio(clip_data.get("bgm_query", ""), f"bgm_{index}") if edit_type != "clean" else None
+    sfx_file = _fetch_audio(clip_data.get("sfx_query", ""), f"sfx_{index}") if (edit_type in ("aura", "funny") and peak_sec is not None) else None
     ass_file = generate_pro_captions(word_timestamps, start, start + duration, font_name, is_split, f"cap_{index}.ass")
 
-    # 1. Base Layout
-    layout_graph = _build_layout_graph(facecam_box, focus_x)
+    layout_graph = _build_layout_graph(facecam_box, focus_x, duration, edit_type)
 
-    # 2. Clean, Studio Color Grading (No cheap over-the-top filters)
+    # Distinct visual grading per moment type (never one-size-fits-all)
     if edit_type == "aura":
-        post_vf = ["eq=contrast=1.10:saturation=0.95:brightness=-0.02", "vignette=PI/7"]
+        post_vf = ["eq=contrast=1.12:saturation=0.92:brightness=-0.02", "vignette=PI/7"]
         if peak_sec is not None:
             post_vf.append(f"hue=s=0:enable='gte(t,{peak_sec:.2f})'")
-            post_vf.append(f"eq=contrast=1.18:enable='gte(t,{peak_sec:.2f})'")
-    elif edit_type == "hype":
-        post_vf = ["eq=contrast=1.07:saturation=1.12"]
-    elif edit_type == "expose":
-        post_vf = ["eq=contrast=1.06:saturation=1.02", "vignette=PI/8"]
+            post_vf.append(f"eq=contrast=1.20:enable='gte(t,{peak_sec:.2f})'")
+    elif edit_type == "clash":
+        post_vf = ["eq=contrast=1.10:saturation=1.10"]
+    elif edit_type == "funny":
+        post_vf = ["eq=contrast=1.06:saturation=1.12"]
+    elif edit_type == "drama":
+        post_vf = ["eq=contrast=1.08:saturation=1.05", "vignette=PI/8"]
     else:
-        post_vf = ["eq=contrast=1.04:saturation=1.05"]
+        post_vf = ["eq=contrast=1.04:saturation=1.04"]
 
-    # Sleek modern dark translucent Hook Banner (3.5s, never ugly red)
     if title_text and edit_type != "clean":
         post_vf.append(
-            f"drawtext=fontfile={font_path}:text='{title_text}':fontcolor=white:fontsize=46:"
-            f"box=1:boxcolor=0x0F1115@0.82:boxborderw=18:x=(w-text_w)/2:y=150:enable='between(t,0.1,3.6)'"
+            f"drawtext=fontfile={font_path}:text='{title_text}':fontcolor=white:fontsize=44:"
+            f"box=1:boxcolor=0x0F1115@0.82:boxborderw=16:x=(w-text_w)/2:y=145:enable='between(t,0.15,3.5)'"
         )
 
     if ass_file and os.path.exists(ass_file):
@@ -280,25 +274,24 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     video_chain = f"{layout_graph}[base]{','.join(post_vf)}[v];"
     cmd = ["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", video_path]
 
-    # 3. Studio Audio Mastering (Crystal Clear Voice + Subtle Smooth BGM)
     voice_chain = "[0:a]highpass=f=80,acompressor=threshold=-18dB:ratio=3:attack=5:release=50,volume=1.15[voice];"
-    bgm_vol = "0.20" if edit_type == "aura" else ("0.15" if edit_type == "hype" else "0.11")
-    fade_out_start = max(0.5, duration - 1.4)
+    bgm_vol = "0.14" if edit_type in ("aura", "clash") else "0.10"
+    fade_out_start = max(0.5, duration - 1.2)
 
     if bgm_file and sfx_file:
         cmd.extend(["-stream_loop", "-1", "-i", bgm_file, "-i", sfx_file])
         sfx_ms = int(peak_sec * 1000)
         fc = (
             f"{video_chain}{voice_chain}"
-            f"[1:a]atrim=0:{duration:.2f},afade=t=in:st=0:d=1.0,afade=t=out:st={fade_out_start:.2f}:d=1.4,volume={bgm_vol}[bgm];"
-            f"[2:a]atrim=0:1.5,afade=t=out:st=1.0:d=0.5,adelay={sfx_ms}|{sfx_ms},volume=0.38[sfx];"
+            f"[1:a]atrim=0:{duration:.2f},afade=t=in:st=0:d=0.8,afade=t=out:st={fade_out_start:.2f}:d=1.2,volume={bgm_vol}[bgm];"
+            f"[2:a]atrim=0:1.2,afade=t=out:st=0.8:d=0.4,adelay={sfx_ms}|{sfx_ms},volume=0.32[sfx];"
             f"[voice][bgm][sfx]amix=inputs=3:duration=first:dropout_transition=2:normalize=0[a]"
         )
     elif bgm_file:
         cmd.extend(["-stream_loop", "-1", "-i", bgm_file])
         fc = (
             f"{video_chain}{voice_chain}"
-            f"[1:a]atrim=0:{duration:.2f},afade=t=in:st=0:d=1.0,afade=t=out:st={fade_out_start:.2f}:d=1.4,volume={bgm_vol}[bgm];"
+            f"[1:a]atrim=0:{duration:.2f},afade=t=in:st=0:d=0.8,afade=t=out:st={fade_out_start:.2f}:d=1.2,volume={bgm_vol}[bgm];"
             f"[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]"
         )
     elif sfx_file:
@@ -306,29 +299,57 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         sfx_ms = int(peak_sec * 1000)
         fc = (
             f"{video_chain}{voice_chain}"
-            f"[1:a]atrim=0:1.5,afade=t=out:st=1.0:d=0.5,adelay={sfx_ms}|{sfx_ms},volume=0.38[sfx];"
+            f"[1:a]atrim=0:1.2,afade=t=out:st=0.8:d=0.4,adelay={sfx_ms}|{sfx_ms},volume=0.32[sfx];"
             f"[voice][sfx]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]"
         )
     else:
         fc = f"{video_chain}{voice_chain}[voice]anull[a]"
 
     cmd.extend([
-        "-filter_complex", fc, "-map", "[v]", "-map", "[a]",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
-        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
-        output_file
+        "-filter_complex",
+        fc,
+        "-map",
+        "[v]",
+        "-map",
+        "[a]",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "21",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        output_file,
     ])
 
-    print(f"[MAG73 Pro Editor] Rendering {output_file} | Style: {edit_type} | Peak: {peak_sec} | Split: {is_split}")
+    print(f"[MAG73 Pro Editor] Rendering {output_file} | Style: {edit_type} | Peak: {peak_sec}")
     subprocess.run(cmd, check=True)
 
-    # 4. Guaranteed Cover Thumbnail (.jpg) with -update 1 fix
     os.makedirs("output_clips", exist_ok=True)
     cover_path = os.path.join("output_clips", output_file.replace(".mp4", ".jpg"))
     thumb_sec = min(2.0, duration / 2.0)
-    subprocess.run([
-        "ffmpeg", "-y", "-ss", f"{thumb_sec:.2f}", "-i", output_file,
-        "-frames:v", "1", "-update", "1", "-q:v", "3", cover_path
-    ], check=False)
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            f"{thumb_sec:.2f}",
+            "-i",
+            output_file,
+            "-frames:v",
+            "1",
+            "-update",
+            "1",
+            "-q:v",
+            "3",
+            cover_path,
+        ],
+        check=False,
+    )
 
     return output_file
