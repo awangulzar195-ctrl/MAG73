@@ -23,7 +23,7 @@ _working_groq_model = None
 
 
 def _call_groq(prompt, temperature=0.25):
-    """Multi-model Groq chat engine with automatic 404/rate-limit fallback."""
+    """Multi-model Groq engine with automatic fallback."""
     global _working_groq_model
     if not GROQ_KEY:
         return ""
@@ -66,7 +66,7 @@ def _call_groq(prompt, temperature=0.25):
 
 
 def _build_timestamped_transcript(words):
-    """Groq aur Gemini ke liye exact [12s] timestamped transcript banata hai."""
+    """Creates [Xs] timestamped lines for AI analysis."""
     if not words:
         return ""
     lines = []
@@ -87,14 +87,22 @@ def _build_timestamped_transcript(words):
 
 
 def extract_accurate_transcript(video_path="source_video.mp4"):
-    """Whisper language='hi' + Groq Roman Hinglish + exact timestamps."""
+    """Extracts word timestamps via Whisper and converts to Roman Hinglish."""
     if not GROQ_KEY:
         return "", [], "hi"
     try:
         subprocess.run(
             [
-                "ffmpeg", "-y", "-i", video_path,
-                "-vn", "-acodec", "libmp3lame", "-q:a", "4", "temp_audio.mp3",
+                "ffmpeg",
+                "-y",
+                "-i",
+                video_path,
+                "-vn",
+                "-acodec",
+                "libmp3lame",
+                "-q:a",
+                "4",
+                "temp_audio.mp3",
             ],
             check=True,
             stdout=subprocess.DEVNULL,
@@ -135,7 +143,7 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
 
 
 def _convert_words_to_hinglish_groq(words, full_context):
-    """Groq se Roman Hinglish conversion with safe fallback."""
+    """Converts Hindi/mixed words into clean Roman Hinglish."""
     try:
         raw_list = [str(w.get("word", "")).strip() for w in words]
         converted_all = []
@@ -143,11 +151,11 @@ def _convert_words_to_hinglish_groq(words, full_context):
             chunk = raw_list[i:i + 70]
             prompt = (
                 "Transliterate each word in this JSON array into clean, natural Roman Hinglish "
-                "(e.g. 'भाई' -> 'Bhai', 'चिकन' -> 'Chicken', 'मार' -> 'Maar', 'क्या' -> 'Kya').\n"
+                "(e.g. 'भाई' -> 'Bhai', 'क्या' -> 'Kya', 'लड़ाई' -> 'Ladai', 'मज़ाक' -> 'Mazaak').\n"
                 "RULES:\n"
                 "1. Keep English words in proper English spelling.\n"
-                "2. DO NOT translate Hindi words into English! Write Hindi words in Roman letters (A-Z).\n"
-                "3. Return ONLY a valid JSON array of strings with the EXACT SAME LENGTH.\n"
+                "2. Do NOT translate Hindi words into English; write them in clean Roman Hinglish (A-Z).\n"
+                "3. Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
                 f"Context: {full_context[:350]}\n"
                 f"Input: {json.dumps(chunk, ensure_ascii=False)}"
             )
@@ -163,9 +171,9 @@ def _convert_words_to_hinglish_groq(words, full_context):
         for idx, w in enumerate(words):
             if idx < len(converted_all):
                 w["word"] = str(converted_all[idx])
-        print("[MAG73 Audio] Roman Hinglish captions processed!")
+        print("[MAG73 Audio] Roman Hinglish captions ready.")
     except Exception as e:
-        print(f"[MAG73 Audio] Hinglish conversion warning: {e}")
+        print(f"[MAG73 Audio] Hinglish warning: {e}")
     return words
 
 
@@ -181,7 +189,7 @@ def _wait_for_gemini_file(video_file):
 
 
 def _expert_gemini_vision(video_path, transcript_text, audience_signals):
-    """Sirf 1 Gemini call per video + automatic model fallback."""
+    """Single vision pass with safe fallback."""
     if not gemini_client:
         return "[]"
     try:
@@ -189,15 +197,15 @@ def _expert_gemini_vision(video_path, transcript_text, audience_signals):
         video_file = _wait_for_gemini_file(uploaded_file)
 
         prompt = f"""
-        You are a PRO VIRAL REELS DIRECTOR.
+        You are a PRO SHORT-FORM VIRAL EDITOR.
         Analyze the video + audience signals:
         - Live Chat Spikes (sec): {audience_signals.get('chat_spikes', [])}
         - Top Comment Timestamps (sec): {audience_signals.get('comment_timestamps', [])}
 
         RULES:
-        1. Pick the TOP 1 to 3 best, complete viral/funny/clutch/exposing moments (15-38s, score 80-100).
-        2. REAL HUMAN FACECAM CHECK: ONLY set "facecam_box": [x, y, w, h] if a REAL HUMAN PERSON is clearly visible in a webcam overlay (never minimap/HUD). Otherwise null.
-        3. Identify "peak_sec" (seconds from clip start where the kill/punchline/drop hits).
+        1. Pick TOP 1 to 3 engaging, complete moments (12-32s, score 80-100).
+        2. REAL HUMAN FACECAM CHECK: ONLY set "facecam_box": [x, y, w, h] (0.0-1.0) if a real human webcam overlay is clearly visible and relevant; otherwise null.
+        3. Identify "peak_sec" (seconds from clip start where the main reaction/punchline/drop occurs).
 
         Return JSON list:
         [{{"start": int, "end": int, "score": 80-100, "peak_sec": int, "facecam_box": null, "focus_x": "center", "reason": "..."}}]
@@ -220,8 +228,8 @@ def _expert_groq_dialogue(transcript_text, audience_signals):
     if not transcript_text:
         return "[]"
     prompt = f"""
-    You are a viral short-form video director.
-    Read this TIMESTAMPED transcript (each line starts with [Xs] seconds) and pick the TOP 1 to 3 most engaging, funny, shocking, or high-hype complete moments (15-38 seconds each).
+    Read this TIMESTAMPED transcript ([Xs] seconds) and pick TOP 1 to 3 engaging, complete moments (12-32s each).
+    Include "peak_sec" (seconds from clip start where the punchline/climax happens).
     Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
     Top Comments: {audience_signals.get('top_comments', [])[:10]}
     Chat Spikes: {audience_signals.get('chat_spikes', [])}
@@ -230,7 +238,7 @@ def _expert_groq_dialogue(transcript_text, audience_signals):
     {transcript_text[:14000]}
 
     Return ONLY a JSON list:
-    [{{"start": 10, "end": 32, "score": 88, "peak_sec": 15, "reason": "..."}}]
+    [{{"start": 10, "end": 28, "score": 88, "peak_sec": 14, "reason": "..."}}]
     """
     return _call_groq(prompt, temperature=0.3)
 
@@ -253,8 +261,14 @@ def _get_video_duration_sec(video_path):
     try:
         out = subprocess.check_output(
             [
-                "ffprobe", "-v", "error", "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1", video_path
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                video_path,
             ],
             stderr=subprocess.DEVNULL,
             text=True,
@@ -279,39 +293,39 @@ def run_super_ai_council(video_path, audience_signals):
     style_pref = os.getenv("EDIT_STYLE", "auto").strip().lower()
 
     judge_prompt = f"""
-    You are the CHIEF PRO REELS EDITOR of MAG73.
+    You are the CHIEF PRO SHORT-FORM EDITOR of MAG73.
     User style preference: "{style_pref}"
     Vision Report: {vision_report}
     Dialogue Report: {dialogue_report}
 
     RULES:
-    1. Approve the TOP 1 to 3 best complete moments (15-38s, score >= 80). Always pick the strongest moment(s) from the reports.
-    2. Choose the best "edit_type":
-       - "aura": Epic clutch / sigma / savage moment -> phonk BGM, B&W drop at "peak_sec", bass drop SFX.
-       - "hype": Fast gaming action / esports -> energetic subtle BGM, crisp colors, NO B&W drop.
-       - "funny": Hilarious roast / fail -> raw comedy timing (no BGM), optional vine boom SFX at "peak_sec".
-       - "expose": Serious exposé / storytelling -> dark suspense subtle BGM, punchy hook title, NO SFX.
-       - "clean": Pure raw viral clip -> no BGM, no SFX, no banner, just pro captions.
-    3. HOOK TITLE ("title_text"): Catchy 3-5 word viral hook in Hinglish/English (ASCII only), or "" for clean.
-    4. BGM & SFX: Only provide "bgm_query" / "sfx_query" when it genuinely improves the clip (otherwise "").
+    1. Approve TOP 1 to 3 strong complete moments (12-32s, score >= 80).
+    2. Match "edit_type" to each clip's actual mood (do NOT force one style on every clip):
+       - "drama": Intense argument / emotional / reality clash -> subtle dramatic grade, optional light hook title.
+       - "clash": High-energy confrontation / intense banter -> crisp contrast, subtle energy.
+       - "funny": Hilarious roast / reaction / comic moment -> lively colors, NO heavy dark mood, optional light SFX at "peak_sec".
+       - "aura": Savage/cold/sigma comeback -> moody grade, B&W shift from "peak_sec".
+       - "clean": Pure raw moment with crisp captions & subtle pacing only (no extra banner/BGM).
+    3. HOOK TITLE ("title_text"): Short 2-5 word Roman Hinglish/English hook (ASCII only) or "" if not needed.
+    4. BGM & SFX: Only provide "bgm_query" / "sfx_query" when it genuinely fits the moment; keep "" otherwise so voice/dialogue stays clean.
 
     Return ONLY valid JSON array:
     [
       {{
-        "start": 10,
-        "end": 32,
-        "score": 89,
-        "edit_type": "hype",
+        "start": 5,
+        "end": 23,
+        "score": 88,
+        "edit_type": "drama",
         "facecam_box": null,
         "focus_x": "center",
-        "title_text": "INSANE MOMENT!",
-        "peak_sec": 14,
-        "bgm_query": "ytsearch1:dark phonk gaming edit instrumental no copyright",
+        "title_text": "BAAT YAHAN TAK AAYI!",
+        "peak_sec": 9,
+        "bgm_query": "",
         "sfx_query": ""
       }}
     ]
     """
-    final_text = _call_groq(judge_prompt, temperature=0.2)
+    final_text = _call_groq(judge_prompt, temperature=0.25)
     raw_clips = _clean_json(final_text)
     if not raw_clips:
         raw_clips = _clean_json(vision_report)
@@ -327,21 +341,21 @@ def run_super_ai_council(video_path, audience_signals):
     if not clips:
         dur = _get_video_duration_sec(video_path)
         start_s = 0.0
-        end_s = min(dur, 25.0)
+        end_s = min(dur, 22.0)
         clips = [
             {
                 "start": int(start_s),
                 "end": int(max(8.0, end_s)),
                 "score": 85,
-                "edit_type": style_pref if style_pref in ("aura", "hype", "funny", "expose", "clean") else "hype",
+                "edit_type": style_pref if style_pref in ("drama", "clash", "funny", "aura", "clean") else "drama",
                 "facecam_box": None,
                 "focus_x": "center",
-                "title_text": "TOP MOMENT!",
-                "peak_sec": int(min(10.0, max(2.0, (end_s - start_s) * 0.5))),
-                "bgm_query": "ytsearch1:dark phonk gaming edit instrumental no copyright",
+                "title_text": "",
+                "peak_sec": int(min(8.0, max(2.0, (end_s - start_s) * 0.5))),
+                "bgm_query": "",
                 "sfx_query": "",
             }
         ]
 
-    print(f"[MAG73 Pro Editor] Approved {len(clips)} viral clip(s)!")
+    print(f"[MAG73 Pro Editor] Approved {len(clips)} clip(s).")
     return clips, word_timestamps
