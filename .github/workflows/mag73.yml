@@ -4,18 +4,28 @@ on:
   workflow_dispatch:
     inputs:
       source_url:
-        description: 'YouTube Video / Live Stream Link or GitHub Asset URL'
+        description: 'YouTube Video / Live URL or Release Asset URL'
         required: true
         type: string
       input_mode:
-        description: 'Mode: live, vod, or upload'
-        required: true
+        description: 'Mode: vod, live, or upload'
+        required: false
         default: 'vod'
         type: string
       edit_style:
-        description: 'Style: auto, aura, funny, documentary, or casual'
-        required: true
+        description: 'Editing Vibe: auto, aura, funny, drama, clash, documentary, casual, clean'
+        required: false
         default: 'auto'
+        type: string
+      custom_prompt:
+        description: 'Optional user instruction for AI Director'
+        required: false
+        default: ''
+        type: string
+      plugin_config:
+        description: 'JSON config for caption_lang, bgm_enabled, sfx_enabled, banner_enabled'
+        required: false
+        default: '{"caption_lang":"hinglish","bgm_enabled":true,"sfx_enabled":true,"banner_enabled":true}'
         type: string
 
 permissions:
@@ -24,6 +34,7 @@ permissions:
 jobs:
   clip-and-edit:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout MAG73 Repository
         uses: actions/checkout@v4
@@ -33,39 +44,41 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install FFmpeg & Fonts
+      - name: Install FFmpeg & System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-dejavu-core
+          sudo apt-get install -y ffmpeg fontconfig nodejs
 
       - name: Install Python Dependencies
         run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install yt-dlp requests google-genai
 
       - name: Run MAG73 Multi-AI Council & Pro Editor
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          YT_COOKIES: ${{ secrets.YT_COOKIES }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || secrets.GROK_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           SOURCE_URL: ${{ github.event.inputs.source_url }}
           INPUT_MODE: ${{ github.event.inputs.input_mode }}
           EDIT_STYLE: ${{ github.event.inputs.edit_style }}
-        run: python main.py
+          CUSTOM_PROMPT: ${{ github.event.inputs.custom_prompt }}
+          PLUGIN_CONFIG: ${{ github.event.inputs.plugin_config }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python main.py
 
       - name: Upload Ready Shorts as Artifacts
-        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: MAG73-Viral-Shorts
+          name: mag73-clips-${{ github.run_number }}
           path: output_clips/
+          if-no-files-found: warn
 
       - name: Publish Clips to GitHub Release (For App Direct Access)
-        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: clips-${{ github.run_number }}
-          name: MAG73 Clips Batch #${{ github.run_number }}
+          name: MAG73 Clips #${{ github.run_number }}
           files: output_clips/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
