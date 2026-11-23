@@ -233,19 +233,21 @@ def _expert_gemini_vision(video_path, transcript_text, audience_signals, custom_
         prompt = f"""
         You are a PRO SHORT-FORM VIRAL EDITOR.
         {user_rule}
-        Analyze the video + audience signals:
+        Analyze the ENTIRE video + audience signals:
         - Live Chat Spikes (sec): {audience_signals.get('chat_spikes', [])}
         - Top Comment Timestamps (sec): {audience_signals.get('comment_timestamps', [])}
 
         RULES:
-        1. Pick TOP 1 to 3 engaging, complete moments (12-32s, score 80-100).
-        2. REAL HUMAN FACECAM CHECK: ONLY set "facecam_box": [x, y, w, h] (0.0-1.0) if a real human webcam overlay is clearly visible and relevant; otherwise null.
-        3. Identify "peak_sec" (seconds from clip start where the main reaction/punchline/drop occurs).
+        1. Extract ALL genuinely high-hype, viral, funny, clutch, or intense moments across the ENTIRE video (12-35s each, score 82-100).
+        2. DO NOT cap at 2 clips — if the video has 5 or 8 real banger moments, return ALL of them!
+        3. STRICT QUALITY: Completely skip boring, filler, or average talking parts.
+        4. REAL HUMAN FACECAM CHECK: ONLY set "facecam_box": [x, y, w, h] (0.0-1.0) if a real human webcam overlay is clearly visible and relevant; otherwise null.
+        5. Identify "peak_sec" (seconds from clip start where the main reaction/punchline/drop occurs).
 
         Return JSON list:
-        [{{"start": int, "end": int, "score": 80-100, "peak_sec": int, "facecam_box": null, "focus_x": "center", "reason": "..."}}]
+        [{{"start": int, "end": int, "score": 82-100, "peak_sec": int, "facecam_box": null, "focus_x": "center", "reason": "..."}}]
         Timestamped Transcript:
-        {transcript_text[:8000]}
+        {transcript_text[:10000]}
         """
         for model_name in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"):
             try:
@@ -265,14 +267,15 @@ def _expert_groq_dialogue(transcript_text, audience_signals, custom_prompt):
     user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION: {custom_prompt}\n" if custom_prompt else ""
     prompt = f"""
     {user_rule}
-    Read this TIMESTAMPED transcript ([Xs] seconds) and pick TOP 1 to 3 engaging, complete moments (12-32s each).
+    Read this ENTIRE TIMESTAMPED transcript ([Xs] seconds) and extract ALL genuinely high-hype, funny, shocking, or intense complete moments (12-35s each, score 82-100).
+    DO NOT limit to 2 clips — return as many real banger moments as exist, and skip all boring/filler parts.
     Include "peak_sec" (seconds from clip start where the punchline/climax happens).
     Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
     Top Comments: {audience_signals.get('top_comments', [])[:10]}
     Chat Spikes: {audience_signals.get('chat_spikes', [])}
 
     Timestamped Transcript:
-    {transcript_text[:14000]}
+    {transcript_text[:16000]}
 
     Return ONLY a JSON list:
     [{{"start": 10, "end": 28, "score": 88, "peak_sec": 14, "reason": "..."}}]
@@ -348,8 +351,8 @@ def run_super_ai_council(video_path, audience_signals):
     Dialogue Report: {dialogue_report}
 
     RULES:
-    1. Approve TOP 1 to 3 strong complete moments (12-32s, score >= 80).
-    2. Match "edit_type" to each clip's actual mood (do NOT force one style on every clip):
+    1. Approve ALL genuinely high-hype, non-overlapping banger moments (12-35s, score >= 82). Do NOT cap at 2 clips if there are more real bangers, and strictly reject boring/filler clips!
+    2. Match "edit_type" to each clip's actual mood:
        - "drama": Intense argument / emotional / reality clash -> subtle dramatic grade.
        - "clash": High-energy confrontation / intense banter -> crisp contrast.
        - "funny": Hilarious roast / reaction / comic moment -> lively colors.
@@ -381,7 +384,7 @@ def run_super_ai_council(video_path, audience_signals):
     if not raw_clips:
         raw_clips = _clean_json(dialogue_report)
 
-    clips = [c for c in raw_clips if isinstance(c, dict) and int(c.get("score", 80)) >= 80]
+    clips = [c for c in raw_clips if isinstance(c, dict) and int(c.get("score", 80)) >= 82]
     if not clips and raw_clips:
         dict_clips = [c for c in raw_clips if isinstance(c, dict)]
         if dict_clips:
@@ -415,5 +418,5 @@ def run_super_ai_council(video_path, audience_signals):
         if not banner_enabled:
             c["title_text"] = ""
 
-    print(f"[MAG73 Pro Editor] Approved {len(clips)} clip(s).")
+    print(f"[MAG73 Pro Editor] Approved {len(clips)} high-hype clip(s).")
     return clips, word_timestamps
