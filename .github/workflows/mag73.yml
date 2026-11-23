@@ -54,6 +54,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install yt-dlp requests google-genai
 
+      - name: Load YouTube Cookies
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          if [ -n "$YOUTUBE_COOKIES" ]; then
+            printf "%s\n" "$YOUTUBE_COOKIES" > cookies.txt
+            echo "cookies.txt ready"
+          fi
+
       - name: Run MAG73 Multi-AI Council & Pro Editor
         env:
           SOURCE_URL: ${{ github.event.inputs.source_url }}
