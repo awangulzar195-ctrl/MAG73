@@ -22,6 +22,24 @@ GROQ_MODELS = [
 _working_groq_model = None
 
 
+def _get_plugin_config():
+    defaults = {
+        "caption_lang": "hinglish",
+        "bgm_enabled": True,
+        "sfx_enabled": True,
+        "banner_enabled": True,
+    }
+    raw = os.getenv("PLUGIN_CONFIG", "").strip()
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                defaults.update(parsed)
+        except Exception as e:
+            print(f"[MAG73 Plugin] Config parse warning: {e}")
+    return defaults
+
+
 def _call_groq(prompt, temperature=0.25):
     """Multi-model Groq engine with automatic fallback."""
     global _working_groq_model
@@ -86,10 +104,10 @@ def _build_timestamped_transcript(words):
     return "\n".join(lines)
 
 
-def extract_accurate_transcript(video_path="source_video.mp4"):
-    """Extracts word timestamps via Whisper and converts to Roman Hinglish."""
+def extract_accurate_transcript(video_path="source_video.mp4", caption_lang="hinglish"):
+    """Extracts word timestamps via Whisper and formats per caption_lang."""
     if not GROQ_KEY:
-        return "", [], "hi"
+        return "", [], caption_lang
     try:
         subprocess.run(
             [
@@ -109,6 +127,7 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
             stderr=subprocess.DEVNULL,
         )
 
+        whisper_lang = "en" if caption_lang == "en" else "hi"
         with open("temp_audio.mp3", "rb") as f:
             res = requests.post(
                 "https://api.groq.com/openai/v1/audio/transcriptions",
@@ -116,7 +135,7 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
                 files={"file": f},
                 data={
                     "model": "whisper-large-v3-turbo",
-                    "language": "hi",
+                    "language": whisper_lang,
                     "response_format": "verbose_json",
                     "timestamp_granularities[]": "word",
                 },
@@ -124,38 +143,51 @@ def extract_accurate_transcript(video_path="source_video.mp4"):
             )
         if res.status_code != 200:
             print(f"[MAG73 Audio] Whisper HTTP {res.status_code}")
-            return "", [], "hi"
+            return "", [], caption_lang
 
         data = res.json()
         words = data.get("words") or []
         text = data.get("text") or ""
-        print(f"[MAG73 Audio] Extracted {len(words)} words.")
+        print(f"[MAG73 Audio] Extracted {len(words)} words (lang={caption_lang}).")
 
         if words:
-            words = _convert_words_to_hinglish_groq(words, text)
+            if caption_lang == "hinglish":
+                words = _convert_words_groq(words, text, mode="hinglish")
+            elif caption_lang == "en":
+                words = _convert_words_groq(words, text, mode="en")
             ts_text = _build_timestamped_transcript(words)
-            return ts_text, words, "hi"
+            return ts_text, words, caption_lang
 
-        return text, words, "hi"
+        return text, words, caption_lang
     except Exception as e:
         print(f"[MAG73 Audio] Transcript skipped: {e}")
-        return "", [], "hi"
+        return "", [], caption_lang
 
 
-def _convert_words_to_hinglish_groq(words, full_context):
-    """Converts Hindi/mixed words into clean Roman Hinglish."""
+def _convert_words_groq(words, full_context, mode="hinglish"):
+    """Converts words to clean Roman Hinglish or clean English."""
     try:
         raw_list = [str(w.get("word", "")).strip() for w in words]
         converted_all = []
         for i in range(0, len(raw_list), 70):
             chunk = raw_list[i:i + 70]
+            if mode == "en":
+                instruction = (
+                    "Clean or translate each word in this JSON array into natural, crisp English captions (A-Z).\n"
+                    "Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
+                )
+            else:
+                instruction = (
+                    "Transliterate each word in this JSON array into clean, natural Roman Hinglish "
+                    "(e.g. 'भाई' -> 'Bhai', 'क्या' -> 'Kya', 'लड़ाई' -> 'Ladai', 'मज़ाक' -> 'Mazaak').\n"
+                    "RULES:\n"
+                    "1. Keep English words in proper English spelling.\n"
+                    "2. Do NOT translate Hindi words into English; write them in clean Roman Hinglish (A-Z).\n"
+                    "3. Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
+                )
+
             prompt = (
-                "Transliterate each word in this JSON array into clean, natural Roman Hinglish "
-                "(e.g. 'भाई' -> 'Bhai', 'क्या' -> 'Kya', 'लड़ाई' -> 'Ladai', 'मज़ाक' -> 'Mazaak').\n"
-                "RULES:\n"
-                "1. Keep English words in proper English spelling.\n"
-                "2. Do NOT translate Hindi words into English; write them in clean Roman Hinglish (A-Z).\n"
-                "3. Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
+                f"{instruction}"
                 f"Context: {full_context[:350]}\n"
                 f"Input: {json.dumps(chunk, ensure_ascii=False)}"
             )
@@ -171,9 +203,9 @@ def _convert_words_to_hinglish_groq(words, full_context):
         for idx, w in enumerate(words):
             if idx < len(converted_all):
                 w["word"] = str(converted_all[idx])
-        print("[MAG73 Audio] Roman Hinglish captions ready.")
+        print(f"[MAG73 Audio] {mode.upper()} captions ready.")
     except Exception as e:
-        print(f"[MAG73 Audio] Hinglish warning: {e}")
+        print(f"[MAG73 Audio] Caption formatting warning: {e}")
     return words
 
 
@@ -188,7 +220,7 @@ def _wait_for_gemini_file(video_file):
         time.sleep(3)
 
 
-def _expert_gemini_vision(video_path, transcript_text, audience_signals):
+def _expert_gemini_vision(video_path, transcript_text, audience_signals, custom_prompt):
     """Single vision pass with safe fallback."""
     if not gemini_client:
         return "[]"
@@ -196,8 +228,11 @@ def _expert_gemini_vision(video_path, transcript_text, audience_signals):
         uploaded_file = gemini_client.files.upload(file=video_path)
         video_file = _wait_for_gemini_file(uploaded_file)
 
+        user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION: {custom_prompt}\n" if custom_prompt else ""
+
         prompt = f"""
         You are a PRO SHORT-FORM VIRAL EDITOR.
+        {user_rule}
         Analyze the video + audience signals:
         - Live Chat Spikes (sec): {audience_signals.get('chat_spikes', [])}
         - Top Comment Timestamps (sec): {audience_signals.get('comment_timestamps', [])}
@@ -224,10 +259,12 @@ def _expert_gemini_vision(video_path, transcript_text, audience_signals):
     return "[]"
 
 
-def _expert_groq_dialogue(transcript_text, audience_signals):
+def _expert_groq_dialogue(transcript_text, audience_signals, custom_prompt):
     if not transcript_text:
         return "[]"
+    user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION: {custom_prompt}\n" if custom_prompt else ""
     prompt = f"""
+    {user_rule}
     Read this TIMESTAMPED transcript ([Xs] seconds) and pick TOP 1 to 3 engaging, complete moments (12-32s each).
     Include "peak_sec" (seconds from clip start where the punchline/climax happens).
     Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
@@ -282,32 +319,44 @@ def run_super_ai_council(video_path, audience_signals):
     if isinstance(audience_signals, list):
         audience_signals = {"chat_spikes": audience_signals, "comment_timestamps": [], "top_comments": []}
 
-    transcript_text, word_timestamps, _ = extract_accurate_transcript(video_path)
+    plugin_cfg = _get_plugin_config()
+    caption_lang = str(plugin_cfg.get("caption_lang", "hinglish")).lower()
+    bgm_enabled = bool(plugin_cfg.get("bgm_enabled", True))
+    sfx_enabled = bool(plugin_cfg.get("sfx_enabled", True))
+    banner_enabled = bool(plugin_cfg.get("banner_enabled", True))
+    custom_prompt = os.getenv("CUSTOM_PROMPT", "").strip()
+
+    print(f"[MAG73 Config] Plugin={plugin_cfg} | CustomPrompt='{custom_prompt}'")
+
+    transcript_text, word_timestamps, _ = extract_accurate_transcript(video_path, caption_lang=caption_lang)
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        f1 = executor.submit(_expert_gemini_vision, video_path, transcript_text, audience_signals)
-        f2 = executor.submit(_expert_groq_dialogue, transcript_text, audience_signals)
+        f1 = executor.submit(_expert_gemini_vision, video_path, transcript_text, audience_signals, custom_prompt)
+        f2 = executor.submit(_expert_groq_dialogue, transcript_text, audience_signals, custom_prompt)
         vision_report = f1.result()
         dialogue_report = f2.result()
 
     style_pref = os.getenv("EDIT_STYLE", "auto").strip().lower()
+    user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION (OBEY STRICTLY): {custom_prompt}\n" if custom_prompt else ""
 
     judge_prompt = f"""
     You are the CHIEF PRO SHORT-FORM EDITOR of MAG73.
+    {user_rule}
     User style preference: "{style_pref}"
+    Plugin Settings: BGM={'ON' if bgm_enabled else 'OFF'}, SFX={'ON' if sfx_enabled else 'OFF'}, HookBanner={'ON' if banner_enabled else 'OFF'}
     Vision Report: {vision_report}
     Dialogue Report: {dialogue_report}
 
     RULES:
     1. Approve TOP 1 to 3 strong complete moments (12-32s, score >= 80).
     2. Match "edit_type" to each clip's actual mood (do NOT force one style on every clip):
-       - "drama": Intense argument / emotional / reality clash -> subtle dramatic grade, optional light hook title.
-       - "clash": High-energy confrontation / intense banter -> crisp contrast, subtle energy.
-       - "funny": Hilarious roast / reaction / comic moment -> lively colors, NO heavy dark mood, optional light SFX at "peak_sec".
+       - "drama": Intense argument / emotional / reality clash -> subtle dramatic grade.
+       - "clash": High-energy confrontation / intense banter -> crisp contrast.
+       - "funny": Hilarious roast / reaction / comic moment -> lively colors.
        - "aura": Savage/cold/sigma comeback -> moody grade, B&W shift from "peak_sec".
-       - "clean": Pure raw moment with crisp captions & subtle pacing only (no extra banner/BGM).
-    3. HOOK TITLE ("title_text"): Short 2-5 word Roman Hinglish/English hook (ASCII only) or "" if not needed.
-    4. BGM & SFX: Only provide "bgm_query" / "sfx_query" when it genuinely fits the moment; keep "" otherwise so voice/dialogue stays clean.
+       - "clean": Pure raw moment with crisp captions & subtle pacing only.
+    3. HOOK TITLE ("title_text"): Short 2-5 word hook (ASCII only) ONLY if HookBanner is ON, else "".
+    4. BGM & SFX: Provide "bgm_query" ONLY if BGM is ON and fits the mood (else ""). Provide "sfx_query" ONLY if SFX is ON and fits a punchline (else "").
 
     Return ONLY valid JSON array:
     [
@@ -356,6 +405,15 @@ def run_super_ai_council(video_path, audience_signals):
                 "sfx_query": "",
             }
         ]
+
+    # Strictly enforce plugin toggles
+    for c in clips:
+        if not bgm_enabled:
+            c["bgm_query"] = ""
+        if not sfx_enabled:
+            c["sfx_query"] = ""
+        if not banner_enabled:
+            c["title_text"] = ""
 
     print(f"[MAG73 Pro Editor] Approved {len(clips)} clip(s).")
     return clips, word_timestamps
