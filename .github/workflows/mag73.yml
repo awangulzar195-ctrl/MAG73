@@ -8,12 +8,12 @@ on:
         required: true
         type: string
       input_mode:
-        description: 'Mode: vod, live, or upload'
+        description: 'Mode: scan, render_clip, vod, live, or upload'
         required: false
         default: 'vod'
         type: string
       edit_style:
-        description: 'Editing Vibe: auto, aura, funny, drama, clash, documentary, casual, clean'
+        description: 'Editing Vibe: auto, aura, funny, drama, clash, clean'
         required: false
         default: 'auto'
         type: string
@@ -26,6 +26,11 @@ on:
         description: 'JSON config for caption_lang, bgm_enabled, sfx_enabled, banner_enabled'
         required: false
         default: '{"caption_lang":"hinglish","bgm_enabled":true,"sfx_enabled":true,"banner_enabled":true}'
+        type: string
+      clip_spec:
+        description: 'JSON spec for single clip in render_clip mode'
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -70,20 +75,25 @@ jobs:
           EDIT_STYLE: ${{ github.event.inputs.edit_style }}
           CUSTOM_PROMPT: ${{ github.event.inputs.custom_prompt }}
           PLUGIN_CONFIG: ${{ github.event.inputs.plugin_config }}
+          CLIP_SPEC: ${{ github.event.inputs.clip_spec }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python main.py
 
-      - name: Upload Ready Shorts as Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Publish Scan Results (Scan Mode)
+        if: ${{ github.event.inputs.input_mode == 'scan' }}
+        uses: softprops/action-gh-release@v2
         with:
-          name: mag73-clips-${{ github.run_number }}
-          path: output_clips/
-          if-no-files-found: warn
+          tag_name: scan-${{ github.run_number }}
+          name: MAG73 Scan #${{ github.run_number }}
+          files: output_clips/scan_result.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Clips to GitHub Release (For App Direct Access)
+        if: ${{ github.event.inputs.input_mode != 'scan' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: clips-${{ github.run_number }}
