@@ -4,145 +4,211 @@ import json
 import subprocess
 import requests
 
-BROWSER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "*/*"
-}
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
 
-def _download_file(url, out_path="source_video.mp4"):
-    print("[MAG73] Downloading uploaded file...")
-    headers = dict(BROWSER_HEADERS)
-    if "api.github.com" in url:
-        gh_token = os.getenv("GITHUB_TOKEN", "").strip()
-        headers["Authorization"] = f"Bearer {gh_token}"
-        headers["Accept"] = "application/octet-stream"
 
-    with requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=180) as r:
+def _has_valid_cookies():
+    """Checks if cookies.txt exists and has actual cookie lines."""
+    if not os.path.exists("cookies.txt"):
+        return False
+    try:
+        with open("cookies.txt", "r", encoding="utf-8", errors="ignore") as f:
+            lines = [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
+        if len(lines) > 0:
+            print(f"[MAG73 Cookies] Loaded cookies.txt ({len(lines)} entries).")
+            return True
+    except Exception:
+        pass
+    print("[MAG73 Cookies] Warning: cookies.txt is empty or invalid!")
+    return False
+
+
+def _base_ytdlp_cmd():
+    cmd = [
+        "yt-dlp",
+        "--no-playlist",
+        "--js-runtimes", "node",
+        "--remote-components", "ejs:github",
+        "--retries", "3",
+        "--fragment-retries", "3",
+    ]
+    if _has_valid_cookies():
+        cmd.extend(["--cookies", "cookies.txt"])
+    return cmd
+
+
+def _run_ytdlp_with_fallback(base_args, url):
+    """
+    Tries multiple YouTube player client strategies to bypass bot/format blocks.
+    """
+    strategies = [
+        [],  # Default yt-dlp + cookies
+        ["--extractor-args", "youtube:player_client=web,mweb"],
+        ["--extractor-args", "youtube:player_client=ios,web"],
+        ["--extractor-args", "youtube:player_client=android,web"],
+    ]
+    last_stderr = ""
+    for extra in strategies:
+        cmd = _base_ytdlp_cmd() + extra + base_args + [url]
+        print(f"[MAG73 Input Engine] Running yt-dlp strategy: {extra or 'default'}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            return True, ""
+        last_stderr = (result.stderr or result.stdout or "").strip()
+        print(f"[MAG73 Input Engine] Strategy failed: {last_stderr[-200:]}")
+    return False, last_stderr
+
+
+def _download_github_asset(asset_url, out_path="source_video.mp4"):
+    headers = {"Accept": "application/octet-stream"}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    print("[MAG73 Input Engine] Downloading uploaded video from GitHub Release...")
+    with requests.get(asset_url, headers=headers, stream=True, timeout=180) as r:
         r.raise_for_status()
         with open(out_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
+            for chunk in r.iter_content(chunk_size=1024 * 256):
                 if chunk:
                     f.write(chunk)
-
     if not os.path.exists(out_path) or os.path.getsize(out_path) < 10000:
-        raise RuntimeError("Downloaded file is empty or invalid!")
+        raise RuntimeError("Uploaded video download failed or file is empty.")
+    return out_path
 
-def _extract_comment_insights(info_json_path):
+
+def _extract_comment_signals(info_json_path="source_video.info.json"):
+    """Extracts timestamps and top comments from yt-dlp info.json."""
+    signals = {"chat_spikes": [], "comment_timestamps": [], "top_comments": []}
     if not os.path.exists(info_json_path):
-        return {"timestamps": [], "top_comments": []}
+        return signals
     try:
-        with open(info_json_path, "r", encoding="utf-8") as f:
+        with open(info_json_path, "r", encoding="utf-8", errors="ignore") as f:
             data = json.load(f)
-        comments = data.get("comments", []) or []
-        timestamps = {}
-        top_comments = []
-
-        comments.sort(key=lambda c: c.get("like_count", 0) or 0, reverse=True)
+        comments = data.get("comments") or []
+        ts_set = set()
+        top_texts = []
         for c in comments[:80]:
-            text = (c.get("text") or "").strip()
-            if not text:
+            txt = str(c.get("text", "")).strip()
+            if not txt:
                 continue
-            if len(top_comments) < 20:
-                top_comments.append(text[:140])
-            for m in re.findall(r"\b(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\b", text):
-                h = int(m[0]) if m[0] else 0
-                total_sec = h * 3600 + int(m[1]) * 60 + int(m[2])
-                bucket = (total_sec // 5) * 5
-                timestamps[bucket] = timestamps.get(bucket, 0) + 1 + (c.get("like_count", 0) or 0) // 10
+            if len(top_texts) < 15:
+                top_texts.append(txt[:160])
+            for m in re.finditer(r"\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b", txt):
+                g1, g2, g3 = m.group(1), m.group(2), m.group(3)
+                sec = (int(g1) * 3600 + int(g2) * 60 + int(g3)) if g3 else (int(g1) * 60 + int(g2))
+                if sec > 0:
+                    ts_set.add(sec)
+        signals["comment_timestamps"] = sorted(list(ts_set))[:30]
+        signals["top_comments"] = top_texts
+    except Exception as e:
+        print(f"[MAG73 Signals] Comment parse warning: {e}")
+    return signals
 
-        sorted_ts = [t for t, _ in sorted(timestamps.items(), key=lambda x: x[1], reverse=True)[:12]]
-        return {"timestamps": sorted_ts, "top_comments": top_comments}
-    except Exception:
-        return {"timestamps": [], "top_comments": []}
-
-def extract_chat_hype(chat_file):
-    if not os.path.exists(chat_file):
-        return []
-    buckets = {}
-    hype_words = ["op", "wtf", "lol", "omg", "clip", "💀", "😂", "🔥", "bhai", "arey", "gg", "clutch"]
-    with open(chat_file, "r", encoding="utf-8") as f:
-        for line in f:
-            try:
-                data = json.loads(line)
-                action = data.get("replayChatItemAction", {})
-                offset_ms = int(action.get("videoOffsetTimeMsec", 0))
-                sec_bucket = (offset_ms // 10000) * 10
-                text = json.dumps(data).lower()
-                score = 1 + sum(3 for w in hype_words if w in text)
-                buckets[sec_bucket] = buckets.get(sec_bucket, 0) + score
-            except Exception:
-                continue
-    return [t for t, _ in sorted(buckets.items(), key=lambda x: x[1], reverse=True)[:15]]
-
-def _capture_live_chunk(source_url, base_args, duration_sec=120):
-    """Ongoing live stream ko bina atke exact 2-minute chunk mein capture karta hai"""
-    print(f"[MAG73 Live Monitor] Capturing {duration_sec}s rolling live chunk...")
-    url_cmd = ["yt-dlp", "-f", "b[height<=720]/best", "-g"] + base_args + [source_url]
-    res = subprocess.run(url_cmd, capture_output=True, text=True, timeout=45)
-    stream_urls = [u.strip() for u in res.stdout.splitlines() if u.strip().startswith("http")]
-
-    if not stream_urls:
-        raise RuntimeError("Could not get live stream URL.")
-
-    # FFmpeg se exact 120s capture karo (never hangs!)
-    ff_cmd = [
-        "ffmpeg", "-y", "-i", stream_urls[0],
-        "-t", str(duration_sec),
-        "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac",
-        "source_video.mp4"
-    ]
-    subprocess.run(ff_cmd, timeout=duration_sec + 60, check=True)
 
 def fetch_media(source_url, mode="vod"):
+    """
+    Full media download for VOD / Scan / Live / Upload modes.
+    Returns: (video_path, audience_signals)
+    """
+    mode = (mode or "vod").strip().lower()
+    out_path = "source_video.mp4"
+    if os.path.exists(out_path):
+        os.remove(out_path)
+
     print(f"[MAG73 Input Engine] Starting in {mode.upper()} mode...")
 
     if mode == "upload":
-        _download_file(source_url, "source_video.mp4")
-        return "source_video.mp4", {"chat_spikes": [], "comment_timestamps": [], "top_comments": []}
+        _download_github_asset(source_url, out_path)
+        return out_path, {"chat_spikes": [], "comment_timestamps": [], "top_comments": []}
 
-    cookies_env = os.getenv("YT_COOKIES", "").strip()
-    base_args = [
-        "--js-runtimes", "node",
-        "--remote-components", "ejs:github"
-    ]
-    if cookies_env:
-        with open("cookies.txt", "w", encoding="utf-8") as cf:
-            cf.write(cookies_env)
-        base_args.extend(["--cookies", "cookies.txt"])
-
-    # LIVE MODE: Never hang on infinite live_chat — capture clean 2-min rolling chunk!
     if mode == "live":
-        _capture_live_chunk(source_url, base_args, duration_sec=120)
-        return "source_video.mp4", {"chat_spikes": [], "comment_timestamps": [], "top_comments": []}
+        # Capture recent 45s live segment
+        args = [
+            "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
+            "--merge-output-format", "mp4",
+            "--live-from-start",
+            "--download-sections", "*0-45",
+            "-o", out_path,
+        ]
+        ok, err = _run_ytdlp_with_fallback(args, source_url)
+        if not ok or not os.path.exists(out_path):
+            # Fallback: direct 35s capture without --live-from-start
+            args_fb = [
+                "-f", "best[height<=720]/best",
+                "--merge-output-format", "mp4",
+                "--download-sections", "*0-35",
+                "-o", out_path,
+            ]
+            ok, err = _run_ytdlp_with_fallback(args_fb, source_url)
+        if not ok or not os.path.exists(out_path):
+            raise RuntimeError(f"Live capture failed: {err[-250:]}")
+        return out_path, {"chat_spikes": [15], "comment_timestamps": [], "top_comments": []}
 
-    # VOD MODE: Grab top comments & chat replay (with strict 45s timeout so it never hangs)
-    meta_cmd = [
-        "yt-dlp", "--skip-download",
-        "--write-info-json", "--get-comments",
-        "--extractor-args", "youtube:max_comments=60,all,0,0",
-        "-o", "source_video.%(ext)s"
-    ] + base_args + [source_url]
-    try:
-        subprocess.run(meta_cmd, timeout=45, check=False)
-    except subprocess.TimeoutExpired:
-        print("[MAG73] Metadata fetch timed out, continuing to video download...")
-
-    vid_cmd = [
-        "yt-dlp",
-        "-f", "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080]/best",
+    # Default VOD / Scan mode
+    args = [
+        "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]/best",
         "--merge-output-format", "mp4",
-        "-o", "source_video.mp4"
-    ] + base_args + [source_url]
+        "--write-info-json",
+        "--get-comments",
+        "--extractor-args", "youtube:max_comments=60,all,0,0",
+        "-o", out_path,
+    ]
+    ok, err = _run_ytdlp_with_fallback(args, source_url)
+    if not ok or not os.path.exists(out_path):
+        # Retry without comments in case comment API caused failure
+        args_simple = [
+            "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
+            "--merge-output-format", "mp4",
+            "-o", out_path,
+        ]
+        ok, err = _run_ytdlp_with_fallback(args_simple, source_url)
 
-    result = subprocess.run(vid_cmd, capture_output=True, text=True)
-    if result.returncode != 0 or not os.path.exists("source_video.mp4"):
-        raise RuntimeError(f"Video download failed: {result.stderr[-250:]}")
+    if not ok or not os.path.exists(out_path):
+        raise RuntimeError(f"Video download failed: {err[-250:]}")
 
-    chat_spikes = extract_chat_hype("source_video.live_chat.json")
-    comment_data = _extract_comment_insights("source_video.info.json")
+    signals = _extract_comment_signals("source_video.info.json")
+    return out_path, signals
 
-    return "source_video.mp4", {
-        "chat_spikes": chat_spikes,
-        "comment_timestamps": comment_data["timestamps"],
-        "top_comments": comment_data["top_comments"]
-    }
+
+def fetch_clip_segment(source_url, start_sec, end_sec, mode="vod"):
+    """
+    Fast single-clip segment download for parallel individual clip rendering.
+    Downloads only [start_sec - 2s, end_sec + 2s] and returns (segment_path, offset_sec).
+    """
+    mode = (mode or "vod").strip().lower()
+    seg_path = "clip_segment.mp4"
+    if os.path.exists(seg_path):
+        os.remove(seg_path)
+
+    pad_start = max(0.0, float(start_sec) - 1.5)
+    pad_end = max(pad_start + 5.0, float(end_sec) + 1.5)
+
+    if mode == "upload":
+        full_path = _download_github_asset(source_url, "source_video.mp4")
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-ss", str(pad_start), "-to", str(pad_end),
+                "-i", full_path, "-c", "copy", seg_path
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return seg_path, pad_start
+
+    section_arg = f"*{pad_start:.2f}-{pad_end:.2f}"
+    args = [
+        "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
+        "--merge-output-format", "mp4",
+        "--download-sections", section_arg,
+        "--force-keyframes-at-cuts",
+        "-o", seg_path,
+    ]
+    ok, err = _run_ytdlp_with_fallback(args, source_url)
+    if ok and os.path.exists(seg_path) and os.path.getsize(seg_path) > 20000:
+        print(f"[MAG73 Input Engine] Fast segment ready: {section_arg}")
+        return seg_path, pad_start
+
+    # Safe fallback: download full video and return offset 0
+    print("[MAG73 Input Engine] Segment download fallback to full video...")
+    full_path, _ = fetch_media(source_url, mode="vod")
+    return full_path, 0.0
