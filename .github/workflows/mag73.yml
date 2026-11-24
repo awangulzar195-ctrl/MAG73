@@ -61,12 +61,31 @@ jobs:
 
       - name: Load YouTube Cookies
         env:
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
-          if [ -n "$YOUTUBE_COOKIES" ]; then
-            printf "%s\n" "$YOUTUBE_COOKIES" > cookies.txt
-            echo "cookies.txt ready"
-          fi
+          python -c '
+          import os, re
+          raw = os.getenv("YT_COOKIES") or os.getenv("YOUTUBE_COOKIES") or ""
+          out = []
+          for line in raw.splitlines():
+              s = line.strip()
+              if not s or s.startswith("#"):
+                  out.append(s)
+                  continue
+              if "\t" not in s:
+                  parts = re.split(r"\s+", s, maxsplit=6)
+                  if len(parts) == 7:
+                      s = "\t".join(parts)
+              out.append(s)
+          text = "\n".join(out).strip()
+          if text:
+              with open("cookies.txt", "w", encoding="utf-8") as f:
+                  f.write(text + "\n")
+              print(f"cookies.txt ready ({len(out)} lines)")
+          else:
+              print("WARNING: No cookies secret found!")
+          '
 
       - name: Run MAG73 Multi-AI Council & Pro Editor
         env:
