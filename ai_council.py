@@ -13,13 +13,15 @@ GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
 gemini_client = genai.Client(api_key=GEMINI_KEY) if GEMINI_KEY else None
 
 GROQ_MODELS = [
-    "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
     "meta-llama/llama-4-scout-17b-16e-instruct",
     "gemma2-9b-it",
 ]
 
 _working_groq_model = None
+
+VALID_STYLES = ("vlog", "gaming", "clash", "funny", "aura", "drama", "informative", "clean")
 
 
 def _get_plugin_config():
@@ -28,6 +30,9 @@ def _get_plugin_config():
         "bgm_enabled": True,
         "sfx_enabled": True,
         "banner_enabled": True,
+        "custom_ffmpeg": "",
+        "custom_font_url": "",
+        "external_plugin_url": "",
     }
     raw = os.getenv("PLUGIN_CONFIG", "").strip()
     if raw:
@@ -40,51 +45,104 @@ def _get_plugin_config():
     return defaults
 
 
+def _devanagari_to_roman(text):
+    """Offline fallback transliterator so Hindi words never vanish if LLM fails."""
+    if not text or not any("\u0900" <= ch <= "\u097f" for ch in text):
+        return text
+    vowels = {
+        "अ": "a", "आ": "aa", "इ": "i", "ई": "ee", "उ": "u", "ऊ": "oo",
+        "ए": "e", "ऐ": "ai", "ओ": "o", "औ": "au", "ऋ": "ri",
+    }
+    matras = {
+        "ा": "aa", "ि": "i", "ी": "ee", "ु": "u", "ू": "oo",
+        "े": "e", "ै": "ai", "ो": "o", "ौ": "au", "ृ": "ri",
+        "ं": "n", "ँ": "n", "ः": "h", "्": "",
+    }
+    cons = {
+        "क": "k", "ख": "kh", "ग": "g", "घ": "gh", "ङ": "ng",
+        "च": "ch", "छ": "chh", "ज": "j", "झ": "jh", "ञ": "ny",
+        "ट": "t", "ठ": "th", "ड": "d", "ढ": "dh", "ण": "n",
+        "त": "t", "थ": "th", "द": "d", "ध": "dh", "न": "n",
+        "प": "p", "फ": "ph", "ब": "b", "भ": "bh", "म": "m",
+        "य": "y", "र": "r", "ल": "l", "व": "v", "श": "sh",
+        "ष": "sh", "स": "s", "ह": "h", "क़": "q", "ख़": "kh",
+        "ग़": "g", "ज़": "z", "ड़": "r", "ढ़": "rh", "फ़": "f",
+    }
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch in vowels:
+            out.append(vowels[ch])
+        elif ch in cons:
+            base = cons[ch]
+            nxt = text[i + 1] if i + 1 < n else ""
+            if nxt in matras:
+                out.append(base + matras[nxt])
+                i += 1
+            elif nxt in cons or (nxt and nxt not in " ,.!?;:-"):
+                out.append(base + "a")
+            else:
+                out.append(base)
+        elif ch in matras:
+            out.append(matras[ch])
+        else:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def _call_groq(prompt, temperature=0.25):
-    """Multi-model Groq engine with automatic fallback."""
+    """Multi-model Groq engine with automatic fallback to Gemini text."""
     global _working_groq_model
-    if not GROQ_KEY:
-        return ""
+    if GROQ_KEY:
+        ordered_models = []
+        if _working_groq_model:
+            ordered_models.append(_working_groq_model)
+        for m in GROQ_MODELS:
+            if m not in ordered_models:
+                ordered_models.append(m)
 
-    ordered_models = []
-    if _working_groq_model:
-        ordered_models.append(_working_groq_model)
-    for m in GROQ_MODELS:
-        if m not in ordered_models:
-            ordered_models.append(m)
+        last_err = ""
+        for model_name in ordered_models:
+            try:
+                res = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {GROQ_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model_name,
+                        "temperature": temperature,
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                    timeout=60,
+                )
+                if res.status_code == 200:
+                    _working_groq_model = model_name
+                    data = res.json()
+                    choices = data.get("choices") or []
+                    if choices:
+                        return choices[0].get("message", {}).get("content", "")
+                last_err = f"HTTP {res.status_code}: {res.text[:140]}"
+            except Exception as e:
+                last_err = str(e)
+        print(f"[MAG73 Groq] Models skipped ({last_err}), trying Gemini text fallback...")
 
-    last_err = ""
-    for model_name in ordered_models:
-        try:
-            res = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {GROQ_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model_name,
-                    "temperature": temperature,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-                timeout=60,
-            )
-            if res.status_code == 200:
-                _working_groq_model = model_name
-                data = res.json()
-                choices = data.get("choices") or []
-                if choices:
-                    return choices[0].get("message", {}).get("content", "")
-            last_err = f"HTTP {res.status_code}: {res.text[:160]}"
-        except Exception as e:
-            last_err = str(e)
-
-    print(f"[MAG73 Groq] All models failed ({last_err})")
+    if gemini_client:
+        for gm in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"):
+            try:
+                res = gemini_client.models.generate_content(model=gm, contents=prompt)
+                if res and res.text:
+                    return res.text
+            except Exception:
+                continue
     return ""
 
 
 def _build_timestamped_transcript(words):
-    """Creates [Xs] timestamped lines for AI analysis."""
     if not words:
         return ""
     lines = []
@@ -105,40 +163,34 @@ def _build_timestamped_transcript(words):
 
 
 def extract_accurate_transcript(video_path="source_video.mp4", caption_lang="hinglish"):
-    """Extracts word timestamps via Whisper and formats per caption_lang."""
+    """Auto-detects spoken language via Whisper so English vlogs stay English and Hindi becomes crisp Hinglish."""
     if not GROQ_KEY:
         return "", [], caption_lang
     try:
         subprocess.run(
             [
-                "ffmpeg",
-                "-y",
-                "-i",
-                video_path,
-                "-vn",
-                "-acodec",
-                "libmp3lame",
-                "-q:a",
-                "4",
-                "temp_audio.mp3",
+                "ffmpeg", "-y", "-i", video_path,
+                "-vn", "-acodec", "libmp3lame", "-q:a", "4", "temp_audio.mp3",
             ],
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
 
-        whisper_lang = "en" if caption_lang == "en" else "hi"
+        form_data = {
+            "model": "whisper-large-v3-turbo",
+            "response_format": "verbose_json",
+            "timestamp_granularities[]": "word",
+        }
+        if caption_lang == "en":
+            form_data["language"] = "en"
+
         with open("temp_audio.mp3", "rb") as f:
             res = requests.post(
                 "https://api.groq.com/openai/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {GROQ_KEY}"},
                 files={"file": f},
-                data={
-                    "model": "whisper-large-v3-turbo",
-                    "language": whisper_lang,
-                    "response_format": "verbose_json",
-                    "timestamp_granularities[]": "word",
-                },
+                data=form_data,
                 timeout=120,
             )
         if res.status_code != 200:
@@ -148,13 +200,22 @@ def extract_accurate_transcript(video_path="source_video.mp4", caption_lang="hin
         data = res.json()
         words = data.get("words") or []
         text = data.get("text") or ""
-        print(f"[MAG73 Audio] Extracted {len(words)} words (lang={caption_lang}).")
+        detected_lang = str(data.get("language", "")).lower()
+        print(f"[MAG73 Audio] Extracted {len(words)} words (detected={detected_lang}, target={caption_lang}).")
 
         if words:
-            if caption_lang == "hinglish":
-                words = _convert_words_groq(words, text, mode="hinglish")
-            elif caption_lang == "en":
-                words = _convert_words_groq(words, text, mode="en")
+            has_non_ascii = any(not str(w.get("word", "")).isascii() for w in words)
+            if caption_lang == "en" and has_non_ascii:
+                words = _convert_words_smart(words, text, mode="en")
+            elif caption_lang == "hinglish" and has_non_ascii:
+                words = _convert_words_smart(words, text, mode="hinglish")
+
+            # Final safety guarantee: transliterate any leftover Devanagari so captions never vanish
+            for w in words:
+                txt = str(w.get("word", "")).strip()
+                if txt and not txt.isascii():
+                    w["word"] = _devanagari_to_roman(txt)
+
             ts_text = _build_timestamped_transcript(words)
             return ts_text, words, caption_lang
 
@@ -164,46 +225,49 @@ def extract_accurate_transcript(video_path="source_video.mp4", caption_lang="hin
         return "", [], caption_lang
 
 
-def _convert_words_groq(words, full_context, mode="hinglish"):
-    """Converts words to clean Roman Hinglish or clean English."""
+def _convert_words_smart(words, full_context, mode="hinglish"):
     try:
         raw_list = [str(w.get("word", "")).strip() for w in words]
         converted_all = []
         for i in range(0, len(raw_list), 70):
             chunk = raw_list[i:i + 70]
+            if not any(not x.isascii() for x in chunk):
+                converted_all.extend(chunk)
+                continue
+
             if mode == "en":
                 instruction = (
-                    "Clean or translate each word in this JSON array into natural, crisp English captions (A-Z).\n"
+                    "Translate/clean each word in this JSON array into crisp English captions (ASCII A-Z only).\n"
                     "Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
                 )
             else:
                 instruction = (
-                    "Transliterate each word in this JSON array into clean, natural Roman Hinglish "
-                    "(e.g. 'भाई' -> 'Bhai', 'क्या' -> 'Kya', 'लड़ाई' -> 'Ladai', 'मज़ाक' -> 'Mazaak').\n"
-                    "RULES:\n"
-                    "1. Keep English words in proper English spelling.\n"
-                    "2. Do NOT translate Hindi words into English; write them in clean Roman Hinglish (A-Z).\n"
-                    "3. Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
+                    "Convert each word in this JSON array into clean Roman Hinglish (ASCII A-Z only, e.g. 'भाई'->'Bhai', 'चाय'->'Chai').\n"
+                    "Keep English words in normal English. Do NOT translate Hindi to English, write Hindi in Roman letters.\n"
+                    "Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
                 )
 
             prompt = (
                 f"{instruction}"
-                f"Context: {full_context[:350]}\n"
+                f"Context: {full_context[:300]}\n"
                 f"Input: {json.dumps(chunk, ensure_ascii=False)}"
             )
             out = _call_groq(prompt, temperature=0.1)
             match = re.search(r"\[.*\]", out, re.DOTALL)
             if match:
-                out_chunk = json.loads(match.group(0))
-                if isinstance(out_chunk, list) and len(out_chunk) == len(chunk):
-                    converted_all.extend(out_chunk)
-                    continue
-            converted_all.extend(chunk)
+                try:
+                    out_chunk = json.loads(match.group(0))
+                    if isinstance(out_chunk, list) and len(out_chunk) == len(chunk):
+                        converted_all.extend(out_chunk)
+                        continue
+                except Exception:
+                    pass
+            converted_all.extend([_devanagari_to_roman(x) for x in chunk])
 
         for idx, w in enumerate(words):
             if idx < len(converted_all):
                 w["word"] = str(converted_all[idx])
-        print(f"[MAG73 Audio] {mode.upper()} captions ready.")
+        print(f"[MAG73 Audio] {mode.upper()} captions processed cleanly.")
     except Exception as e:
         print(f"[MAG73 Audio] Caption formatting warning: {e}")
     return words
@@ -221,7 +285,6 @@ def _wait_for_gemini_file(video_file):
 
 
 def _expert_gemini_vision(video_path, transcript_text, audience_signals, custom_prompt):
-    """Single vision pass with safe fallback."""
     if not gemini_client:
         return "[]"
     try:
@@ -231,21 +294,30 @@ def _expert_gemini_vision(video_path, transcript_text, audience_signals, custom_
         user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION: {custom_prompt}\n" if custom_prompt else ""
 
         prompt = f"""
-        You are a PRO SHORT-FORM VIRAL EDITOR.
+        You are a PRO SHORT-FORM VIRAL DIRECTOR (CapCut / OpusClip level).
         {user_rule}
-        Analyze the ENTIRE video + audience signals:
-        - Live Chat Spikes (sec): {audience_signals.get('chat_spikes', [])}
-        - Top Comment Timestamps (sec): {audience_signals.get('comment_timestamps', [])}
+        Watch the ENTIRE video and identify:
+        1. What genre is this video? (food/travel vlog, gaming stream, comedy/roast, podcast, reality drama, etc.)
+        2. Extract ALL genuinely engaging, non-overlapping highlight moments across the ENTIRE video (14-35s each, score 82-100).
+        3. DIFFERENT VIBES PER CLIP: One video can produce DIFFERENT clip styles! For each clip pick the EXACT matching "edit_type":
+           - "vlog": Food tasting, street exploring, travel story, warm cinematic moment.
+           - "gaming": Fast action, gunfight, clutch, gameplay hype.
+           - "funny": Hilarious reaction, spicy shock, awkward laugh, roast, fail.
+           - "aura": Cold savage comeback, insane clutch, epic goosebumps drop.
+           - "drama": Real heated argument, intense clash, emotional tension.
+           - "informative": Cool fact, price reveal, local secret, tip.
+           - "clean": Pure natural moment needing only captions.
+        4. NEVER label a food/travel vlog or gameplay as "drama" unless people are actually arguing!
+        5. Set "peak_sec" (seconds from clip start where the reaction/taste/kill/punchline hits).
+        6. Set "title_text": Catchy 3-5 word viral hook (ASCII only, e.g. "SPICY SHOCK IN KASHMIR!", "INSANE 1V4 CLUTCH!", "CHEAPEST BREAKFAST EVER?").
 
-        RULES:
-        1. Extract ALL genuinely high-hype, viral, funny, clutch, or intense moments across the ENTIRE video (12-35s each, score 82-100).
-        2. DO NOT cap at 2 clips — if the video has 5 or 8 real banger moments, return ALL of them!
-        3. STRICT QUALITY: Completely skip boring, filler, or average talking parts.
-        4. REAL HUMAN FACECAM CHECK: ONLY set "facecam_box": [x, y, w, h] (0.0-1.0) if a real human webcam overlay is clearly visible and relevant; otherwise null.
-        5. Identify "peak_sec" (seconds from clip start where the main reaction/punchline/drop occurs).
+        Audience signals:
+        - Live Chat Spikes: {audience_signals.get('chat_spikes', [])}
+        - Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
 
-        Return JSON list:
-        [{{"start": int, "end": int, "score": 82-100, "peak_sec": int, "facecam_box": null, "focus_x": "center", "reason": "..."}}]
+        Return ONLY a JSON list:
+        [{{"start": int, "end": int, "score": 82-100, "edit_type": "vlog|gaming|funny|aura|drama|informative|clean", "peak_sec": int, "focus_x": "center", "title_text": "SHORT HOOK", "reason": "..."}}]
+
         Timestamped Transcript:
         {transcript_text[:10000]}
         """
@@ -257,7 +329,7 @@ def _expert_gemini_vision(video_path, transcript_text, audience_signals, custom_
             except Exception as e:
                 print(f"[MAG73 Vision] {model_name} skipped ({str(e)[:80]}), trying next...")
     except Exception as e:
-        print(f"[MAG73 Vision] Fallback to transcript/Groq mode: {e}")
+        print(f"[MAG73 Vision] Fallback to transcript mode: {e}")
     return "[]"
 
 
@@ -267,9 +339,11 @@ def _expert_groq_dialogue(transcript_text, audience_signals, custom_prompt):
     user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION: {custom_prompt}\n" if custom_prompt else ""
     prompt = f"""
     {user_rule}
-    Read this ENTIRE TIMESTAMPED transcript ([Xs] seconds) and extract ALL genuinely high-hype, funny, shocking, or intense complete moments (12-35s each, score 82-100).
-    DO NOT limit to 2 clips — return as many real banger moments as exist, and skip all boring/filler parts.
-    Include "peak_sec" (seconds from clip start where the punchline/climax happens).
+    Read this ENTIRE TIMESTAMPED transcript ([Xs] seconds) and extract ALL genuinely engaging, non-overlapping highlight moments (14-35s each, score 82-100).
+    Match EACH clip's actual mood with its own "edit_type" from: "vlog", "gaming", "funny", "aura", "drama", "informative", "clean".
+    NEVER call a food/travel/informative clip "drama"!
+    Include "peak_sec" (seconds from clip start where the punchline/reaction hits) and a catchy 3-5 word ASCII "title_text".
+
     Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
     Top Comments: {audience_signals.get('top_comments', [])[:10]}
     Chat Spikes: {audience_signals.get('chat_spikes', [])}
@@ -278,7 +352,7 @@ def _expert_groq_dialogue(transcript_text, audience_signals, custom_prompt):
     {transcript_text[:16000]}
 
     Return ONLY a JSON list:
-    [{{"start": 10, "end": 28, "score": 88, "peak_sec": 14, "reason": "..."}}]
+    [{{"start": 10, "end": 30, "score": 88, "edit_type": "funny", "peak_sec": 12, "title_text": "WAIT FOR HIS REACTION!", "reason": "..."}}]
     """
     return _call_groq(prompt, temperature=0.3)
 
@@ -301,14 +375,8 @@ def _get_video_duration_sec(video_path):
     try:
         out = subprocess.check_output(
             [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                video_path,
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", video_path,
             ],
             stderr=subprocess.DEVNULL,
             text=True,
@@ -316,6 +384,40 @@ def _get_video_duration_sec(video_path):
         return max(10.0, float(out))
     except Exception:
         return 60.0
+
+
+def _deduplicate_clips(clips, max_dur):
+    """Removes overlapping/duplicate clips so the same segment is never rendered twice."""
+    valid = []
+    for c in clips:
+        if not isinstance(c, dict):
+            continue
+        s = max(0.0, float(c.get("start", 0)))
+        e = min(max_dur, float(c.get("end", s + 20)))
+        if e - s < 8.0:
+            e = min(max_dur, s + 16.0)
+        if e - s > 36.0:
+            e = s + 34.0
+        c["start"] = int(round(s))
+        c["end"] = int(round(e))
+        valid.append(c)
+
+    # Prioritize highest scores, skip heavily overlapping segments
+    valid.sort(key=lambda x: int(x.get("score", 80)), reverse=True)
+    kept = []
+    for c in valid:
+        overlaps = False
+        for k in kept:
+            inter = min(c["end"], k["end"]) - max(c["start"], k["start"])
+            min_len = max(1, min(c["end"] - c["start"], k["end"] - k["start"]))
+            if inter > 0.35 * min_len or abs(c["start"] - k["start"]) < 5:
+                overlaps = True
+                break
+        if not overlaps:
+            kept.append(c)
+
+    kept.sort(key=lambda x: x["start"])
+    return kept
 
 
 def run_super_ai_council(video_path, audience_signals):
@@ -332,6 +434,7 @@ def run_super_ai_council(video_path, audience_signals):
     print(f"[MAG73 Config] Plugin={plugin_cfg} | CustomPrompt='{custom_prompt}'")
 
     transcript_text, word_timestamps, _ = extract_accurate_transcript(video_path, caption_lang=caption_lang)
+    vid_dur = _get_video_duration_sec(video_path)
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         f1 = executor.submit(_expert_gemini_vision, video_path, transcript_text, audience_signals, custom_prompt)
@@ -343,35 +446,37 @@ def run_super_ai_council(video_path, audience_signals):
     user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION (OBEY STRICTLY): {custom_prompt}\n" if custom_prompt else ""
 
     judge_prompt = f"""
-    You are the CHIEF PRO SHORT-FORM EDITOR of MAG73.
+    You are the CHIEF PRO SHORT-FORM DIRECTOR of MAG73.
     {user_rule}
-    User style preference: "{style_pref}"
+    User style preference: "{style_pref}" (if "auto", pick the EXACT natural style for EACH individual clip!).
     Plugin Settings: BGM={'ON' if bgm_enabled else 'OFF'}, SFX={'ON' if sfx_enabled else 'OFF'}, HookBanner={'ON' if banner_enabled else 'OFF'}
     Vision Report: {vision_report}
     Dialogue Report: {dialogue_report}
 
-    RULES:
-    1. Approve ALL genuinely high-hype, non-overlapping banger moments (12-35s, score >= 82). Do NOT cap at 2 clips if there are more real bangers, and strictly reject boring/filler clips!
-    2. Match "edit_type" to each clip's actual mood:
-       - "drama": Intense argument / emotional / reality clash -> subtle dramatic grade.
-       - "clash": High-energy confrontation / intense banter -> crisp contrast.
-       - "funny": Hilarious roast / reaction / comic moment -> lively colors.
-       - "aura": Savage/cold/sigma comeback -> moody grade, B&W shift from "peak_sec".
-       - "clean": Pure raw moment with crisp captions & subtle pacing only.
-    3. HOOK TITLE ("title_text"): Short 2-5 word hook (ASCII only) ONLY if HookBanner is ON, else "".
-    4. BGM & SFX: Provide "bgm_query" ONLY if BGM is ON and fits the mood (else ""). Provide "sfx_query" ONLY if SFX is ON and fits a punchline (else "").
+    STRICT RULES:
+    1. Approve ALL genuinely high-hype, non-overlapping moments (14-35s, score >= 82). Skip boring filler.
+    2. VARIETY & ACCURACY: One video can have DIFFERENT clip styles! Assign each clip its true "edit_type":
+       - "vlog": Food, street stall, travel, exploring, warm storytelling.
+       - "gaming": Shooter/gameplay action, kills, gunfights, esports.
+       - "funny": Funny reaction, spicy food shock, laugh, roast, fail.
+       - "aura": Cold savage comeback, epic clutch, goosebumps beat drop.
+       - "drama": Real heated argument or emotional clash ONLY.
+       - "informative": Price reveal, local fact, tip, breakdown.
+       - "clean": Pure raw moment with pro captions only.
+    3. HOOK TITLE ("title_text"): Punchy 3-5 word ASCII hook tailored to THAT specific clip (e.g. "WAIT FOR THE SPICE!", "CHEAPEST CHAI IN KASHMIR?", "INSANE CLUTCH MOMENT!"). Empty "" only if HookBanner is OFF or style is "clean".
+    4. BGM ("bgm_query"): Only if BGM is ON AND the clip genuinely needs music (e.g. "ytsearch1:dark phonk edit instrumental no copyright" for aura/gaming, "ytsearch1:chill lofi travel vlog beat no copyright" for quiet vlog; keep "" if the clip already has loud music or raw comedy!).
+    5. SFX ("sfx_query"): Only if SFX is ON and there is a clear punchline/drop at "peak_sec" (e.g. "ytsearch1:vine boom sound effect" for funny, "ytsearch1:bass drop impact sfx" for aura/gaming; else "").
 
     Return ONLY valid JSON array:
     [
       {{
-        "start": 5,
-        "end": 23,
-        "score": 88,
-        "edit_type": "drama",
-        "facecam_box": null,
+        "start": 10,
+        "end": 30,
+        "score": 89,
+        "edit_type": "vlog",
         "focus_x": "center",
-        "title_text": "BAAT YAHAN TAK AAYI!",
-        "peak_sec": 9,
+        "title_text": "HIDDEN GEM IN KASHMIR!",
+        "peak_sec": 11,
         "bgm_query": "",
         "sfx_query": ""
       }}
@@ -390,33 +495,42 @@ def run_super_ai_council(video_path, audience_signals):
         if dict_clips:
             clips = [max(dict_clips, key=lambda x: int(x.get("score", 0)))]
 
+    clips = _deduplicate_clips(clips, vid_dur)
+
     if not clips:
-        dur = _get_video_duration_sec(video_path)
-        start_s = 0.0
-        end_s = min(dur, 22.0)
+        end_s = min(vid_dur, 24.0)
+        fallback_style = style_pref if style_pref in VALID_STYLES else "vlog"
         clips = [
             {
-                "start": int(start_s),
-                "end": int(max(8.0, end_s)),
+                "start": 0,
+                "end": int(max(10.0, end_s)),
                 "score": 85,
-                "edit_type": style_pref if style_pref in ("drama", "clash", "funny", "aura", "clean") else "drama",
-                "facecam_box": None,
+                "edit_type": fallback_style,
                 "focus_x": "center",
-                "title_text": "",
-                "peak_sec": int(min(8.0, max(2.0, (end_s - start_s) * 0.5))),
+                "title_text": "WATCH TILL THE END!" if banner_enabled else "",
+                "peak_sec": int(min(10.0, max(3.0, end_s * 0.5))),
                 "bgm_query": "",
                 "sfx_query": "",
             }
         ]
 
-    # Strictly enforce plugin toggles
+    # Enforce user override & plugin toggles cleanly
     for c in clips:
+        et = str(c.get("edit_type", "vlog")).strip().lower()
+        if style_pref in VALID_STYLES and style_pref != "auto":
+            et = style_pref
+        elif et not in VALID_STYLES:
+            et = "vlog"
+        c["edit_type"] = et
+
         if not bgm_enabled:
             c["bgm_query"] = ""
         if not sfx_enabled:
             c["sfx_query"] = ""
         if not banner_enabled:
             c["title_text"] = ""
+        elif not str(c.get("title_text", "")).strip() and et != "clean":
+            c["title_text"] = "WATCH THIS MOMENT!"
 
-    print(f"[MAG73 Pro Editor] Approved {len(clips)} high-hype clip(s).")
+    print(f"[MAG73 Pro Editor] Approved {len(clips)} unique clip(s): {[c['edit_type'] for c in clips]}")
     return clips, word_timestamps
