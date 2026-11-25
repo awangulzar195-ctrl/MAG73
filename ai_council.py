@@ -13,8 +13,8 @@ GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
 gemini_client = genai.Client(api_key=GEMINI_KEY) if GEMINI_KEY else None
 
 GROQ_MODELS = [
-    "llama-3.1-8b-instant",
     "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
     "meta-llama/llama-4-scout-17b-16e-instruct",
     "gemma2-9b-it",
 ]
@@ -25,10 +25,10 @@ VALID_STYLES = ("vlog", "gaming", "clash", "funny", "aura", "drama", "informativ
 
 DEFAULT_BGM_BY_STYLE = {
     "vlog": "ytsearch1:chill aesthetic travel vlog beat instrumental no copyright",
-    "informative": "ytsearch1:clean modern tech documentary background beat no copyright",
+    "informative": "ytsearch1:clean modern documentary background beat no copyright",
     "gaming": "ytsearch1:energetic gaming phonk montage instrumental no copyright",
     "clash": "ytsearch1:intense dark trap hype beat instrumental no copyright",
-    "funny": "ytsearch1:upbeat funny comedy background music instrumental no copyright",
+    "funny": "ytsearch1:upbeat comedy quirky background music instrumental no copyright",
     "aura": "ytsearch1:dark brazilian phonk sigma edit instrumental no copyright",
     "drama": "ytsearch1:cinematic suspense tension dark background music no copyright",
     "clean": "",
@@ -170,7 +170,7 @@ def _build_timestamped_transcript(words):
     curr = []
     for w in words:
         ws = int(float(w.get("start", 0)))
-        if ws - bucket_start >= 6 and curr:
+        if ws - bucket_start >= 5 and curr:
             lines.append(f"[{bucket_start}s] " + " ".join(curr))
             bucket_start = ws
             curr = []
@@ -183,7 +183,6 @@ def _build_timestamped_transcript(words):
 
 
 def _words_from_segments(segments):
-    """If Whisper returns segments without word-level timings, derive accurate word timings."""
     derived = []
     for seg in (segments or []):
         seg_words = seg.get("words") or []
@@ -215,7 +214,6 @@ def _words_from_segments(segments):
 
 
 def _gemini_audio_transcribe_fallback(audio_path, caption_lang):
-    """Fallback timestamped transcription via Gemini if Groq Whisper fails/rate-limits."""
     if not gemini_client or not os.path.exists(audio_path):
         return "", []
     try:
@@ -223,22 +221,21 @@ def _gemini_audio_transcribe_fallback(audio_path, caption_lang):
         audio_file = _wait_for_gemini_file(uploaded)
         lang_hint = "clean English (ASCII)" if caption_lang == "en" else "natural Roman Hinglish / English (ASCII only, no Devanagari)"
         prompt = f"""
-        Transcribe all spoken dialogue in this audio into short timestamped phrases (2-4 words each) in {lang_hint}.
+        Transcribe ALL spoken dialogue (both Hindi/Hinglish commentary and English) in this audio into short timestamped phrases (2-4 words each) in {lang_hint}.
+        Do NOT skip Hindi speech even when background music is playing.
         Return ONLY valid JSON array:
-        [{{"start": 0.4, "end": 1.6, "text": "WHERE IS OMAR"}}]
+        [{{"start": 0.4, "end": 1.6, "text": "YEH GAALI KAUN DE RAHA"}}]
         """
         for gm in ("gemini-2.5-flash", "gemini-2.0-flash"):
             try:
                 res = gemini_client.models.generate_content(model=gm, contents=[audio_file, prompt])
                 items = _clean_json(res.text or "")
                 words = []
-                full_parts = []
                 for it in items:
                     txt = str(it.get("text", "")).strip()
                     toks = [t for t in txt.split() if t]
                     if not toks:
                         continue
-                    full_parts.append(txt)
                     s = float(it.get("start", 0))
                     e = max(s + 0.3, float(it.get("end", s + 1.0)))
                     step = (e - s) / len(toks)
@@ -255,13 +252,15 @@ def _gemini_audio_transcribe_fallback(audio_path, caption_lang):
 
 
 def extract_accurate_transcript(video_path="source_video.mp4", caption_lang="hinglish"):
-    """Bulletproof word-timestamp extractor: Groq Whisper (with 3x retry + segment fallback) -> Gemini fallback."""
+    """Vocal-filtered Whisper extractor so Hindi/Hinglish speech is caught cleanly even over loud game/BGM audio."""
     audio_path = "temp_audio.mp3"
     try:
+        # Vocal clarity pre-filter: cuts sub-bass rumble & harsh highs, boosts spoken voice
         subprocess.run(
             [
                 "ffmpeg", "-y", "-i", video_path,
-                "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", audio_path,
+                "-vn", "-af", "highpass=f=130,lowpass=f=3800,dynaudnorm=f=150:g=11",
+                "-ac", "1", "-ar", "16000", "-b:a", "64k", audio_path,
             ],
             check=True,
             stdout=subprocess.DEVNULL,
@@ -279,6 +278,11 @@ def extract_accurate_transcript(video_path="source_video.mp4", caption_lang="hin
             "model": "whisper-large-v3-turbo",
             "response_format": "verbose_json",
             "timestamp_granularities[]": "word",
+            "prompt": (
+                "Clean English transcript."
+                if caption_lang == "en"
+                else "Indian creator gaming and vlog commentary in Hindi, Hinglish, and English. Bhai, guys, arey, kya baat hai, chalo, dekho."
+            ),
         }
         if caption_lang == "en":
             form_data["language"] = "en"
@@ -307,10 +311,12 @@ def extract_accurate_transcript(video_path="source_video.mp4", caption_lang="hin
                 print(f"[MAG73 Audio] Whisper attempt {attempt + 1} err: {e}")
                 time.sleep(2)
 
-    if not words:
+    # If Whisper returned very few words (< 5) on a speaking clip, let Gemini catch the Hindi speech
+    if len(words) < 5:
         ts_fb, words_fb = _gemini_audio_transcribe_fallback(audio_path, caption_lang)
-        if words_fb:
-            return ts_fb, words_fb, caption_lang
+        if len(words_fb) > len(words):
+            words = words_fb
+            text = ts_fb
 
     if words:
         has_non_ascii = any(not str(w.get("word", "")).isascii() for w in words)
@@ -347,8 +353,8 @@ def _convert_words_smart(words, full_context, mode="hinglish"):
                 )
             else:
                 instruction = (
-                    "Convert each word in this JSON array into clean Roman Hinglish (ASCII A-Z only, e.g. 'भाई'->'Bhai').\n"
-                    "Keep English words in English. Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
+                    "Convert each word in this JSON array into natural Roman Hinglish (ASCII A-Z only, e.g. 'भाई'->'Bhai', 'गाड़ी'->'Gaadi').\n"
+                    "Keep English words in normal English. Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
                 )
 
             prompt = (
@@ -376,6 +382,39 @@ def _convert_words_smart(words, full_context, mode="hinglish"):
     return words
 
 
+def refine_clip_hook(clip_data, segment_transcript):
+    """Guarantees the Hook Title matches 100% of what ACTUALLY happens inside THIS cut segment."""
+    plugin_cfg = _get_plugin_config()
+    if not bool(plugin_cfg.get("banner_enabled", True)):
+        clip_data["title_text"] = ""
+        return clip_data
+    if str(clip_data.get("edit_type", "")).lower() == "clean":
+        clip_data["title_text"] = ""
+        return clip_data
+
+    seg_txt = (segment_transcript or "").strip()
+    if len(seg_txt) < 12:
+        return clip_data
+
+    existing = str(clip_data.get("title_text", "")).strip()
+    prompt = f"""
+    Read the EXACT dialogue spoken inside this 15-35s short clip and write ONE punchy 2-5 word viral Hook Title (UPPERCASE ASCII ONLY).
+    CRITICAL: The title MUST strictly describe what is actually happening in THIS transcript. Do NOT invent guns/robberies/kills if they are not in this transcript!
+    Existing guess: "{existing}"
+    Clip Transcript:
+    {seg_txt[:1500]}
+
+    Return ONLY the 2-5 word title text (no quotes, no explanation).
+    """
+    refined = _call_groq(prompt, temperature=0.2).strip().splitlines()[0] if seg_txt else existing
+    refined = re.sub(r"[^A-Za-z0-9 !?@#.-]", "", refined).strip().upper()
+    words = refined.split()
+    if 2 <= len(words) <= 6:
+        clip_data["title_text"] = " ".join(words)
+        print(f"[MAG73 Hook] Verified exact clip hook: '{clip_data['title_text']}'")
+    return clip_data
+
+
 def _wait_for_gemini_file(video_file):
     while True:
         info = gemini_client.files.get(name=video_file.name)
@@ -399,26 +438,28 @@ def _expert_gemini_vision(video_path, transcript_text, audience_signals, custom_
         prompt = f"""
         You are a PRO SHORT-FORM VIRAL DIRECTOR (CapCut / OpusClip level).
         {user_rule}
-        Watch the ENTIRE video and extract ALL genuinely engaging, non-overlapping highlight moments (14-34s each, score 82-100).
-        Match EACH clip's REAL vibe with its own "edit_type":
-        - "vlog": Food tasting, street exploring, travel story.
-        - "gaming": Fast action, gunfight, clutch, gameplay hype.
-        - "funny": Hilarious reaction, comedy banter, voice gag, roast, fail.
-        - "aura": Cold savage comeback, insane clutch, badass entrance, epic drop.
-        - "drama": Heated argument, intense confrontation, emotional tension.
-        - "informative": Cool fact, price reveal, local secret, tip.
-        - "clean": Pure raw moment needing captions only.
+        Watch the ENTIRE video and extract ALL genuinely high-hype, non-overlapping highlight moments (15-34s each, score 84-100).
 
-        Pick "peak_sec" (seconds from clip start where the reaction/punchline/climax hits) and a punchy 3-5 word ASCII "title_text".
+        STRICT REJECTION RULES:
+        - NEVER pick video outros ("bye bye", "like share subscribe", "milte hain agli video mein", "assalamualaikum")!
+        - NEVER pick boring quiet driving or menus where nothing funny/exciting happens!
+        - Every clip MUST have a real hook, funny reaction, fight/action, surprise, or punchline.
+
+        FRAMING & STYLE PER CLIP:
+        - "edit_type": Pick the exact real vibe for EACH clip: "vlog", "gaming", "funny", "aura", "drama", "clash", "informative", "clean".
+        - "layout_mode":
+          - "vertical_full": Use for fullscreen talking-head / facecam-only shots, real-life vlogs, or centered close-ups.
+          - "gaming_wide": Use for 16:9 gameplay / HUD scenes where the full horizontal frame matters.
+        - "title_text": MUST strictly match what happens inside [start, end] (3-5 uppercase ASCII words). NEVER mix up events from other timestamps!
 
         Audience signals:
         - Live Chat Spikes: {audience_signals.get('chat_spikes', [])}
         - Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
 
         Return ONLY a JSON list:
-        [{{"start": int, "end": int, "score": 82-100, "edit_type": "vlog|gaming|funny|aura|drama|informative|clean", "peak_sec": int, "focus_x": "center", "title_text": "SHORT HOOK", "reason": "..."}}]
+        [{{"start": int, "end": int, "score": 84-100, "edit_type": "gaming|funny|aura|drama|vlog|clash|informative|clean", "layout_mode": "vertical_full|gaming_wide", "peak_sec": int, "focus_x": "center", "title_text": "EXACT HOOK", "reason": "..."}}]
 
-        Timestamped Transcript:
+        Timestamped Transcript (use these exact [Xs] timestamps!):
         {transcript_text[:10000]}
         """
         for model_name in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"):
@@ -439,9 +480,9 @@ def _expert_groq_dialogue(transcript_text, audience_signals, custom_prompt):
     user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION: {custom_prompt}\n" if custom_prompt else ""
     prompt = f"""
     {user_rule}
-    Read this ENTIRE TIMESTAMPED transcript ([Xs] seconds) and extract ALL genuinely engaging, non-overlapping highlight moments (14-34s each, score 82-100).
-    Match EACH clip's actual mood with its own "edit_type" from: "vlog", "gaming", "funny", "aura", "drama", "informative", "clean".
-    Include "peak_sec" (seconds from clip start where the punchline/reaction hits) and a punchy 3-5 word ASCII "title_text".
+    Read this ENTIRE TIMESTAMPED transcript ([Xs] seconds) and extract ALL genuinely exciting, funny, or intense complete moments (15-34s each, score 84-100).
+    STRICTLY SKIP intros ("welcome back"), outros ("like subscribe bye bye"), and boring filler.
+    Match EACH clip's exact [start, end] to its real spoken content — NEVER attach a title from another part of the video!
 
     Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
     Top Comments: {audience_signals.get('top_comments', [])[:10]}
@@ -451,9 +492,9 @@ def _expert_groq_dialogue(transcript_text, audience_signals, custom_prompt):
     {transcript_text[:16000]}
 
     Return ONLY a JSON list:
-    [{{"start": 10, "end": 30, "score": 88, "edit_type": "funny", "peak_sec": 12, "title_text": "WAIT FOR HIS REACTION!", "reason": "..."}}]
+    [{{"start": 10, "end": 30, "score": 88, "edit_type": "funny", "layout_mode": "vertical_full", "peak_sec": 12, "title_text": "WAIT FOR HIS REACTION!", "reason": "..."}}]
     """
-    return _call_groq(prompt, temperature=0.3)
+    return _call_groq(prompt, temperature=0.25)
 
 
 def _clean_json(raw_text):
@@ -485,19 +526,41 @@ def _get_video_duration_sec(video_path):
         return 60.0
 
 
-def _deduplicate_clips(clips, max_dur):
+def _is_outro_clip(clip, words, total_dur):
+    """Filters out YouTube sign-off / subscribe outros automatically."""
+    s = float(clip.get("start", 0))
+    e = float(clip.get("end", s + 20))
+    if total_dur > 45 and e >= total_dur - 8:
+        seg_text = " ".join(
+            str(w.get("word", "")).lower()
+            for w in (words or [])
+            if s <= float(w.get("start", 0)) <= e
+        )
+        outro_hits = sum(
+            1 for kw in ("bye", "subscribe", "agli video", "next video", "end this video", "good bye", "goodbye", "allah hafiz", "assalam")
+            if kw in seg_text
+        )
+        if outro_hits >= 2:
+            print(f"[MAG73 Filter] Skipped outro segment [{int(s)}s-{int(e)}s].")
+            return True
+    return False
+
+
+def _deduplicate_clips(clips, max_dur, words):
     valid = []
     for c in clips:
         if not isinstance(c, dict):
             continue
         s = max(0.0, float(c.get("start", 0)))
         e = min(max_dur, float(c.get("end", s + 20)))
-        if e - s < 8.0:
-            e = min(max_dur, s + 16.0)
+        if e - s < 10.0:
+            e = min(max_dur, s + 18.0)
         if e - s > 35.0:
             e = s + 34.0
         c["start"] = int(round(s))
         c["end"] = int(round(e))
+        if _is_outro_clip(c, words, max_dur):
+            continue
         valid.append(c)
 
     valid.sort(key=lambda x: int(x.get("score", 80)), reverse=True)
@@ -507,7 +570,7 @@ def _deduplicate_clips(clips, max_dur):
         for k in kept:
             inter = min(c["end"], k["end"]) - max(c["start"], k["start"])
             min_len = max(1, min(c["end"] - c["start"], k["end"] - k["start"]))
-            if inter > 0.35 * min_len or abs(c["start"] - k["start"]) < 5:
+            if inter > 0.30 * min_len or abs(c["start"] - k["start"]) < 6:
                 overlaps = True
                 break
         if not overlaps:
@@ -547,44 +610,49 @@ def run_super_ai_council(video_path, audience_signals):
     {user_rule}
     User style preference: "{style_pref}" (if "auto", choose the exact natural style per clip!).
     Plugin Settings: BGM={'ON' if bgm_enabled else 'OFF'}, SFX={'ON' if sfx_enabled else 'OFF'}, HookBanner={'ON' if banner_enabled else 'OFF'}
+
     Vision Report: {vision_report}
     Dialogue Report: {dialogue_report}
 
-    RULES:
-    1. Approve ALL genuinely high-hype, non-overlapping moments (14-34s, score >= 82). Skip boring filler.
-    2. VARIETY & ACCURACY: One video can produce DIFFERENT styles per clip ("vlog", "gaming", "funny", "aura", "drama", "informative", "clean").
-    3. HOOK TITLE ("title_text"): Punchy 3-5 word ASCII hook tailored to that specific clip.
-    4. BGM & SFX: Provide mood-matched "bgm_query" (if BGM is ON) and "sfx_query" (if SFX is ON).
+    Timestamped Transcript (for verifying exact title alignment):
+    {transcript_text[:9000]}
+
+    STRICT RULES:
+    1. Approve ALL genuinely high-hype, non-overlapping moments (15-34s, score >= 84).
+    2. STRICTLY REJECT outros ("bye bye", "subscribe"), boring silent driving, or filler!
+    3. EXACT TITLE MATCH: Verify "title_text" strictly describes what is spoken/shown inside THAT clip's exact [start, end] range.
+    4. Pick accurate "edit_type" per clip ("vlog", "gaming", "funny", "aura", "drama", "clash", "informative", "clean") and "layout_mode" ("vertical_full" for talking head/vlogs, "gaming_wide" for 16:9 gameplay HUD).
 
     Return ONLY valid JSON array:
     [
       {{
         "start": 10,
         "end": 30,
-        "score": 89,
-        "edit_type": "aura",
+        "score": 90,
+        "edit_type": "funny",
+        "layout_mode": "gaming_wide",
         "focus_x": "center",
-        "title_text": "WHERE IS OMAR?!",
+        "title_text": "SPOTTED A MCLAREN!",
         "peak_sec": 12,
-        "bgm_query": "ytsearch1:dark phonk edit instrumental no copyright",
-        "sfx_query": "ytsearch1:cinematic bass drop sfx"
+        "bgm_query": "",
+        "sfx_query": ""
       }}
     ]
     """
-    final_text = _call_groq(judge_prompt, temperature=0.25)
+    final_text = _call_groq(judge_prompt, temperature=0.2)
     raw_clips = _clean_json(final_text)
     if not raw_clips:
         raw_clips = _clean_json(vision_report)
     if not raw_clips:
         raw_clips = _clean_json(dialogue_report)
 
-    clips = [c for c in raw_clips if isinstance(c, dict) and int(c.get("score", 80)) >= 82]
+    clips = [c for c in raw_clips if isinstance(c, dict) and int(c.get("score", 80)) >= 84]
     if not clips and raw_clips:
         dict_clips = [c for c in raw_clips if isinstance(c, dict)]
         if dict_clips:
             clips = [max(dict_clips, key=lambda x: int(x.get("score", 0)))]
 
-    clips = _deduplicate_clips(clips, vid_dur)
+    clips = _deduplicate_clips(clips, vid_dur, word_timestamps)
 
     if not clips:
         end_s = min(vid_dur, 24.0)
@@ -595,8 +663,9 @@ def run_super_ai_council(video_path, audience_signals):
                 "end": int(max(10.0, end_s)),
                 "score": 85,
                 "edit_type": fallback_style,
+                "layout_mode": "vertical_full",
                 "focus_x": "center",
-                "title_text": "WATCH TILL THE END!" if banner_enabled else "",
+                "title_text": "WATCH THIS MOMENT!" if banner_enabled else "",
                 "peak_sec": int(min(10.0, max(3.0, end_s * 0.5))),
                 "bgm_query": "",
                 "sfx_query": "",
