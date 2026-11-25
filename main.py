@@ -2,7 +2,12 @@ import os
 import json
 import shutil
 from input_engine import fetch_media, fetch_clip_segment
-from ai_council import run_super_ai_council, extract_accurate_transcript, _get_plugin_config
+from ai_council import (
+    run_super_ai_council,
+    extract_accurate_transcript,
+    refine_clip_hook,
+    _get_plugin_config,
+)
 from auto_editor import render_pro_short
 
 
@@ -51,14 +56,17 @@ def main():
         fetch_mode = "upload" if is_upload_asset else "vod"
         seg_path, offset_sec = fetch_clip_segment(source_url, start_sec, end_sec, mode=fetch_mode)
 
-        # Adjust timestamps relative to downloaded segment
         local_clip = dict(clip_data)
+        local_clip["orig_start"] = int(round(start_sec))
         local_clip["start"] = max(0.0, start_sec - offset_sec)
         local_clip["end"] = max(local_clip["start"] + 8.0, end_sec - offset_sec)
 
         plugin_cfg = _get_plugin_config()
         caption_lang = str(plugin_cfg.get("caption_lang", "hinglish")).lower()
-        _, word_timestamps, _ = extract_accurate_transcript(seg_path, caption_lang=caption_lang)
+        seg_transcript, word_timestamps, _ = extract_accurate_transcript(seg_path, caption_lang=caption_lang)
+
+        # Verify hook title strictly matches this exact cut's spoken content
+        local_clip = refine_clip_hook(local_clip, seg_transcript)
 
         out_mp4 = render_pro_short(seg_path, local_clip, word_timestamps, clip_index)
         if out_mp4 and os.path.exists(out_mp4):
@@ -78,6 +86,7 @@ def main():
 
     for idx, clip_data in enumerate(clips):
         try:
+            clip_data["orig_start"] = int(round(float(clip_data.get("start", 0))))
             out_mp4 = render_pro_short(video_path, clip_data, word_timestamps, idx)
             if out_mp4 and os.path.exists(out_mp4):
                 shutil.move(out_mp4, os.path.join("output_clips", os.path.basename(out_mp4)))
