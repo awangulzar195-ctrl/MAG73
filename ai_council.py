@@ -23,6 +23,28 @@ _working_groq_model = None
 
 VALID_STYLES = ("vlog", "gaming", "clash", "funny", "aura", "drama", "informative", "clean")
 
+DEFAULT_BGM_BY_STYLE = {
+    "vlog": "ytsearch1:chill aesthetic travel vlog beat instrumental no copyright",
+    "informative": "ytsearch1:clean modern tech documentary background beat no copyright",
+    "gaming": "ytsearch1:energetic gaming phonk montage instrumental no copyright",
+    "clash": "ytsearch1:intense dark trap hype beat instrumental no copyright",
+    "funny": "ytsearch1:upbeat funny comedy background music instrumental no copyright",
+    "aura": "ytsearch1:dark brazilian phonk sigma edit instrumental no copyright",
+    "drama": "ytsearch1:cinematic suspense tension dark background music no copyright",
+    "clean": "",
+}
+
+DEFAULT_SFX_BY_STYLE = {
+    "funny": "ytsearch1:vine boom sound effect short",
+    "aura": "ytsearch1:cinematic bass drop impact sound effect",
+    "gaming": "ytsearch1:cinematic bass impact hit sfx",
+    "clash": "ytsearch1:dramatic bass boom sfx",
+    "drama": "ytsearch1:dramatic suspense hit sound effect",
+    "vlog": "",
+    "informative": "",
+    "clean": "",
+}
+
 
 def _get_plugin_config():
     defaults = {
@@ -46,7 +68,6 @@ def _get_plugin_config():
 
 
 def _devanagari_to_roman(text):
-    """Offline fallback transliterator so Hindi words never vanish if LLM fails."""
     if not text or not any("\u0900" <= ch <= "\u097f" for ch in text):
         return text
     vowels = {
@@ -94,7 +115,6 @@ def _devanagari_to_roman(text):
 
 
 def _call_groq(prompt, temperature=0.25):
-    """Multi-model Groq engine with automatic fallback to Gemini text."""
     global _working_groq_model
     if GROQ_KEY:
         ordered_models = []
@@ -129,7 +149,7 @@ def _call_groq(prompt, temperature=0.25):
                 last_err = f"HTTP {res.status_code}: {res.text[:140]}"
             except Exception as e:
                 last_err = str(e)
-        print(f"[MAG73 Groq] Models skipped ({last_err}), trying Gemini text fallback...")
+        print(f"[MAG73 Groq] Fallback to Gemini text ({last_err})")
 
     if gemini_client:
         for gm in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"):
@@ -162,21 +182,99 @@ def _build_timestamped_transcript(words):
     return "\n".join(lines)
 
 
+def _words_from_segments(segments):
+    """If Whisper returns segments without word-level timings, derive accurate word timings."""
+    derived = []
+    for seg in (segments or []):
+        seg_words = seg.get("words") or []
+        if seg_words:
+            for sw in seg_words:
+                txt = str(sw.get("word", "")).strip()
+                if txt:
+                    derived.append({
+                        "word": txt,
+                        "start": float(sw.get("start", seg.get("start", 0))),
+                        "end": float(sw.get("end", seg.get("end", 0.3))),
+                    })
+            continue
+
+        txt = str(seg.get("text", "")).strip()
+        tokens = [t for t in txt.split() if t.strip()]
+        if not tokens:
+            continue
+        s = float(seg.get("start", 0))
+        e = max(s + 0.3, float(seg.get("end", s + 1.5)))
+        step = (e - s) / len(tokens)
+        for idx, tok in enumerate(tokens):
+            derived.append({
+                "word": tok,
+                "start": round(s + idx * step, 2),
+                "end": round(s + (idx + 1) * step, 2),
+            })
+    return derived
+
+
+def _gemini_audio_transcribe_fallback(audio_path, caption_lang):
+    """Fallback timestamped transcription via Gemini if Groq Whisper fails/rate-limits."""
+    if not gemini_client or not os.path.exists(audio_path):
+        return "", []
+    try:
+        uploaded = gemini_client.files.upload(file=audio_path)
+        audio_file = _wait_for_gemini_file(uploaded)
+        lang_hint = "clean English (ASCII)" if caption_lang == "en" else "natural Roman Hinglish / English (ASCII only, no Devanagari)"
+        prompt = f"""
+        Transcribe all spoken dialogue in this audio into short timestamped phrases (2-4 words each) in {lang_hint}.
+        Return ONLY valid JSON array:
+        [{{"start": 0.4, "end": 1.6, "text": "WHERE IS OMAR"}}]
+        """
+        for gm in ("gemini-2.5-flash", "gemini-2.0-flash"):
+            try:
+                res = gemini_client.models.generate_content(model=gm, contents=[audio_file, prompt])
+                items = _clean_json(res.text or "")
+                words = []
+                full_parts = []
+                for it in items:
+                    txt = str(it.get("text", "")).strip()
+                    toks = [t for t in txt.split() if t]
+                    if not toks:
+                        continue
+                    full_parts.append(txt)
+                    s = float(it.get("start", 0))
+                    e = max(s + 0.3, float(it.get("end", s + 1.0)))
+                    step = (e - s) / len(toks)
+                    for idx, tok in enumerate(toks):
+                        words.append({"word": tok, "start": round(s + idx * step, 2), "end": round(s + (idx + 1) * step, 2)})
+                if words:
+                    print(f"[MAG73 Audio] Gemini fallback transcribed {len(words)} words.")
+                    return _build_timestamped_transcript(words), words
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"[MAG73 Audio] Gemini fallback warning: {e}")
+    return "", []
+
+
 def extract_accurate_transcript(video_path="source_video.mp4", caption_lang="hinglish"):
-    """Auto-detects spoken language via Whisper so English vlogs stay English and Hindi becomes crisp Hinglish."""
-    if not GROQ_KEY:
-        return "", [], caption_lang
+    """Bulletproof word-timestamp extractor: Groq Whisper (with 3x retry + segment fallback) -> Gemini fallback."""
+    audio_path = "temp_audio.mp3"
     try:
         subprocess.run(
             [
                 "ffmpeg", "-y", "-i", video_path,
-                "-vn", "-acodec", "libmp3lame", "-q:a", "4", "temp_audio.mp3",
+                "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", audio_path,
             ],
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+    except Exception as e:
+        print(f"[MAG73 Audio] FFmpeg extract error: {e}")
+        return "", [], caption_lang
 
+    words = []
+    text = ""
+
+    if GROQ_KEY and os.path.exists(audio_path):
         form_data = {
             "model": "whisper-large-v3-turbo",
             "response_format": "verbose_json",
@@ -185,44 +283,51 @@ def extract_accurate_transcript(video_path="source_video.mp4", caption_lang="hin
         if caption_lang == "en":
             form_data["language"] = "en"
 
-        with open("temp_audio.mp3", "rb") as f:
-            res = requests.post(
-                "https://api.groq.com/openai/v1/audio/transcriptions",
-                headers={"Authorization": f"Bearer {GROQ_KEY}"},
-                files={"file": f},
-                data=form_data,
-                timeout=120,
-            )
-        if res.status_code != 200:
-            print(f"[MAG73 Audio] Whisper HTTP {res.status_code}")
-            return "", [], caption_lang
+        for attempt in range(3):
+            try:
+                with open(audio_path, "rb") as f:
+                    res = requests.post(
+                        "https://api.groq.com/openai/v1/audio/transcriptions",
+                        headers={"Authorization": f"Bearer {GROQ_KEY}"},
+                        files={"file": f},
+                        data=form_data,
+                        timeout=120,
+                    )
+                if res.status_code == 200:
+                    data = res.json()
+                    words = data.get("words") or []
+                    text = data.get("text") or ""
+                    if not words and data.get("segments"):
+                        words = _words_from_segments(data.get("segments"))
+                    print(f"[MAG73 Audio] Whisper extracted {len(words)} words (attempt {attempt + 1}).")
+                    break
+                print(f"[MAG73 Audio] Whisper HTTP {res.status_code} (attempt {attempt + 1}): {res.text[:120]}")
+                time.sleep(2 + attempt * 2)
+            except Exception as e:
+                print(f"[MAG73 Audio] Whisper attempt {attempt + 1} err: {e}")
+                time.sleep(2)
 
-        data = res.json()
-        words = data.get("words") or []
-        text = data.get("text") or ""
-        detected_lang = str(data.get("language", "")).lower()
-        print(f"[MAG73 Audio] Extracted {len(words)} words (detected={detected_lang}, target={caption_lang}).")
+    if not words:
+        ts_fb, words_fb = _gemini_audio_transcribe_fallback(audio_path, caption_lang)
+        if words_fb:
+            return ts_fb, words_fb, caption_lang
 
-        if words:
-            has_non_ascii = any(not str(w.get("word", "")).isascii() for w in words)
-            if caption_lang == "en" and has_non_ascii:
-                words = _convert_words_smart(words, text, mode="en")
-            elif caption_lang == "hinglish" and has_non_ascii:
-                words = _convert_words_smart(words, text, mode="hinglish")
+    if words:
+        has_non_ascii = any(not str(w.get("word", "")).isascii() for w in words)
+        if caption_lang == "en" and has_non_ascii:
+            words = _convert_words_smart(words, text, mode="en")
+        elif caption_lang == "hinglish" and has_non_ascii:
+            words = _convert_words_smart(words, text, mode="hinglish")
 
-            # Final safety guarantee: transliterate any leftover Devanagari so captions never vanish
-            for w in words:
-                txt = str(w.get("word", "")).strip()
-                if txt and not txt.isascii():
-                    w["word"] = _devanagari_to_roman(txt)
+        for w in words:
+            txt = str(w.get("word", "")).strip()
+            if txt and not txt.isascii():
+                w["word"] = _devanagari_to_roman(txt)
 
-            ts_text = _build_timestamped_transcript(words)
-            return ts_text, words, caption_lang
+        ts_text = _build_timestamped_transcript(words)
+        return ts_text, words, caption_lang
 
-        return text, words, caption_lang
-    except Exception as e:
-        print(f"[MAG73 Audio] Transcript skipped: {e}")
-        return "", [], caption_lang
+    return text, [], caption_lang
 
 
 def _convert_words_smart(words, full_context, mode="hinglish"):
@@ -242,9 +347,8 @@ def _convert_words_smart(words, full_context, mode="hinglish"):
                 )
             else:
                 instruction = (
-                    "Convert each word in this JSON array into clean Roman Hinglish (ASCII A-Z only, e.g. 'भाई'->'Bhai', 'चाय'->'Chai').\n"
-                    "Keep English words in normal English. Do NOT translate Hindi to English, write Hindi in Roman letters.\n"
-                    "Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
+                    "Convert each word in this JSON array into clean Roman Hinglish (ASCII A-Z only, e.g. 'भाई'->'Bhai').\n"
+                    "Keep English words in English. Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
                 )
 
             prompt = (
@@ -267,7 +371,6 @@ def _convert_words_smart(words, full_context, mode="hinglish"):
         for idx, w in enumerate(words):
             if idx < len(converted_all):
                 w["word"] = str(converted_all[idx])
-        print(f"[MAG73 Audio] {mode.upper()} captions processed cleanly.")
     except Exception as e:
         print(f"[MAG73 Audio] Caption formatting warning: {e}")
     return words
@@ -280,7 +383,7 @@ def _wait_for_gemini_file(video_file):
         if state == "ACTIVE":
             return info
         if state == "FAILED":
-            raise RuntimeError("Gemini video processing failed.")
+            raise RuntimeError("Gemini media processing failed.")
         time.sleep(3)
 
 
@@ -296,20 +399,17 @@ def _expert_gemini_vision(video_path, transcript_text, audience_signals, custom_
         prompt = f"""
         You are a PRO SHORT-FORM VIRAL DIRECTOR (CapCut / OpusClip level).
         {user_rule}
-        Watch the ENTIRE video and identify:
-        1. What genre is this video? (food/travel vlog, gaming stream, comedy/roast, podcast, reality drama, etc.)
-        2. Extract ALL genuinely engaging, non-overlapping highlight moments across the ENTIRE video (14-35s each, score 82-100).
-        3. DIFFERENT VIBES PER CLIP: One video can produce DIFFERENT clip styles! For each clip pick the EXACT matching "edit_type":
-           - "vlog": Food tasting, street exploring, travel story, warm cinematic moment.
-           - "gaming": Fast action, gunfight, clutch, gameplay hype.
-           - "funny": Hilarious reaction, spicy shock, awkward laugh, roast, fail.
-           - "aura": Cold savage comeback, insane clutch, epic goosebumps drop.
-           - "drama": Real heated argument, intense clash, emotional tension.
-           - "informative": Cool fact, price reveal, local secret, tip.
-           - "clean": Pure natural moment needing only captions.
-        4. NEVER label a food/travel vlog or gameplay as "drama" unless people are actually arguing!
-        5. Set "peak_sec" (seconds from clip start where the reaction/taste/kill/punchline hits).
-        6. Set "title_text": Catchy 3-5 word viral hook (ASCII only, e.g. "SPICY SHOCK IN KASHMIR!", "INSANE 1V4 CLUTCH!", "CHEAPEST BREAKFAST EVER?").
+        Watch the ENTIRE video and extract ALL genuinely engaging, non-overlapping highlight moments (14-34s each, score 82-100).
+        Match EACH clip's REAL vibe with its own "edit_type":
+        - "vlog": Food tasting, street exploring, travel story.
+        - "gaming": Fast action, gunfight, clutch, gameplay hype.
+        - "funny": Hilarious reaction, comedy banter, voice gag, roast, fail.
+        - "aura": Cold savage comeback, insane clutch, badass entrance, epic drop.
+        - "drama": Heated argument, intense confrontation, emotional tension.
+        - "informative": Cool fact, price reveal, local secret, tip.
+        - "clean": Pure raw moment needing captions only.
+
+        Pick "peak_sec" (seconds from clip start where the reaction/punchline/climax hits) and a punchy 3-5 word ASCII "title_text".
 
         Audience signals:
         - Live Chat Spikes: {audience_signals.get('chat_spikes', [])}
@@ -339,10 +439,9 @@ def _expert_groq_dialogue(transcript_text, audience_signals, custom_prompt):
     user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION: {custom_prompt}\n" if custom_prompt else ""
     prompt = f"""
     {user_rule}
-    Read this ENTIRE TIMESTAMPED transcript ([Xs] seconds) and extract ALL genuinely engaging, non-overlapping highlight moments (14-35s each, score 82-100).
+    Read this ENTIRE TIMESTAMPED transcript ([Xs] seconds) and extract ALL genuinely engaging, non-overlapping highlight moments (14-34s each, score 82-100).
     Match EACH clip's actual mood with its own "edit_type" from: "vlog", "gaming", "funny", "aura", "drama", "informative", "clean".
-    NEVER call a food/travel/informative clip "drama"!
-    Include "peak_sec" (seconds from clip start where the punchline/reaction hits) and a catchy 3-5 word ASCII "title_text".
+    Include "peak_sec" (seconds from clip start where the punchline/reaction hits) and a punchy 3-5 word ASCII "title_text".
 
     Comment Timestamps: {audience_signals.get('comment_timestamps', [])}
     Top Comments: {audience_signals.get('top_comments', [])[:10]}
@@ -387,7 +486,6 @@ def _get_video_duration_sec(video_path):
 
 
 def _deduplicate_clips(clips, max_dur):
-    """Removes overlapping/duplicate clips so the same segment is never rendered twice."""
     valid = []
     for c in clips:
         if not isinstance(c, dict):
@@ -396,13 +494,12 @@ def _deduplicate_clips(clips, max_dur):
         e = min(max_dur, float(c.get("end", s + 20)))
         if e - s < 8.0:
             e = min(max_dur, s + 16.0)
-        if e - s > 36.0:
+        if e - s > 35.0:
             e = s + 34.0
         c["start"] = int(round(s))
         c["end"] = int(round(e))
         valid.append(c)
 
-    # Prioritize highest scores, skip heavily overlapping segments
     valid.sort(key=lambda x: int(x.get("score", 80)), reverse=True)
     kept = []
     for c in valid:
@@ -448,24 +545,16 @@ def run_super_ai_council(video_path, audience_signals):
     judge_prompt = f"""
     You are the CHIEF PRO SHORT-FORM DIRECTOR of MAG73.
     {user_rule}
-    User style preference: "{style_pref}" (if "auto", pick the EXACT natural style for EACH individual clip!).
+    User style preference: "{style_pref}" (if "auto", choose the exact natural style per clip!).
     Plugin Settings: BGM={'ON' if bgm_enabled else 'OFF'}, SFX={'ON' if sfx_enabled else 'OFF'}, HookBanner={'ON' if banner_enabled else 'OFF'}
     Vision Report: {vision_report}
     Dialogue Report: {dialogue_report}
 
-    STRICT RULES:
-    1. Approve ALL genuinely high-hype, non-overlapping moments (14-35s, score >= 82). Skip boring filler.
-    2. VARIETY & ACCURACY: One video can have DIFFERENT clip styles! Assign each clip its true "edit_type":
-       - "vlog": Food, street stall, travel, exploring, warm storytelling.
-       - "gaming": Shooter/gameplay action, kills, gunfights, esports.
-       - "funny": Funny reaction, spicy food shock, laugh, roast, fail.
-       - "aura": Cold savage comeback, epic clutch, goosebumps beat drop.
-       - "drama": Real heated argument or emotional clash ONLY.
-       - "informative": Price reveal, local fact, tip, breakdown.
-       - "clean": Pure raw moment with pro captions only.
-    3. HOOK TITLE ("title_text"): Punchy 3-5 word ASCII hook tailored to THAT specific clip (e.g. "WAIT FOR THE SPICE!", "CHEAPEST CHAI IN KASHMIR?", "INSANE CLUTCH MOMENT!"). Empty "" only if HookBanner is OFF or style is "clean".
-    4. BGM ("bgm_query"): Only if BGM is ON AND the clip genuinely needs music (e.g. "ytsearch1:dark phonk edit instrumental no copyright" for aura/gaming, "ytsearch1:chill lofi travel vlog beat no copyright" for quiet vlog; keep "" if the clip already has loud music or raw comedy!).
-    5. SFX ("sfx_query"): Only if SFX is ON and there is a clear punchline/drop at "peak_sec" (e.g. "ytsearch1:vine boom sound effect" for funny, "ytsearch1:bass drop impact sfx" for aura/gaming; else "").
+    RULES:
+    1. Approve ALL genuinely high-hype, non-overlapping moments (14-34s, score >= 82). Skip boring filler.
+    2. VARIETY & ACCURACY: One video can produce DIFFERENT styles per clip ("vlog", "gaming", "funny", "aura", "drama", "informative", "clean").
+    3. HOOK TITLE ("title_text"): Punchy 3-5 word ASCII hook tailored to that specific clip.
+    4. BGM & SFX: Provide mood-matched "bgm_query" (if BGM is ON) and "sfx_query" (if SFX is ON).
 
     Return ONLY valid JSON array:
     [
@@ -473,12 +562,12 @@ def run_super_ai_council(video_path, audience_signals):
         "start": 10,
         "end": 30,
         "score": 89,
-        "edit_type": "vlog",
+        "edit_type": "aura",
         "focus_x": "center",
-        "title_text": "HIDDEN GEM IN KASHMIR!",
-        "peak_sec": 11,
-        "bgm_query": "",
-        "sfx_query": ""
+        "title_text": "WHERE IS OMAR?!",
+        "peak_sec": 12,
+        "bgm_query": "ytsearch1:dark phonk edit instrumental no copyright",
+        "sfx_query": "ytsearch1:cinematic bass drop sfx"
       }}
     ]
     """
@@ -514,7 +603,6 @@ def run_super_ai_council(video_path, audience_signals):
             }
         ]
 
-    # Enforce user override & plugin toggles cleanly
     for c in clips:
         et = str(c.get("edit_type", "vlog")).strip().lower()
         if style_pref in VALID_STYLES and style_pref != "auto":
@@ -523,10 +611,18 @@ def run_super_ai_council(video_path, audience_signals):
             et = "vlog"
         c["edit_type"] = et
 
-        if not bgm_enabled:
+        if bgm_enabled and et != "clean":
+            if not str(c.get("bgm_query", "")).strip():
+                c["bgm_query"] = DEFAULT_BGM_BY_STYLE.get(et, "")
+        else:
             c["bgm_query"] = ""
-        if not sfx_enabled:
+
+        if sfx_enabled and et != "clean":
+            if not str(c.get("sfx_query", "")).strip():
+                c["sfx_query"] = DEFAULT_SFX_BY_STYLE.get(et, "")
+        else:
             c["sfx_query"] = ""
+
         if not banner_enabled:
             c["title_text"] = ""
         elif not str(c.get("title_text", "")).strip() and et != "clean":
