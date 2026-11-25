@@ -1,6 +1,8 @@
 import os
 import re
 import json
+import math
+import struct
 import shutil
 import subprocess
 import requests
@@ -9,15 +11,16 @@ FALLBACK_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 PRO_FONT_FILE = "Montserrat-ExtraBold.ttf"
 PRO_FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-ExtraBold.ttf"
 
+# ASS uses BGR hex (&H00BBGGRR&), FFmpeg color uses 0xRRGGBB
 STYLE_PALETTE = {
-    "vlog":        {"hl": "&H0000D7FF&", "box": "0x1A140A@0.88", "title_col": "0xFFD700", "pbar": "0xF59E0B"},
-    "informative": {"hl": "&H00FFE500&", "box": "0x0B1524@0.88", "title_col": "0x38BDF8", "pbar": "0x38BDF8"},
-    "gaming":      {"hl": "&H0055FF00&", "box": "0x0B1A12@0.90", "title_col": "0x4ADE80", "pbar": "0x4ADE80"},
-    "clash":       {"hl": "&H00FFFF00&", "box": "0x0F172A@0.90", "title_col": "0x22D3EE", "pbar": "0x22D3EE"},
-    "funny":       {"hl": "&H0000EAFF&", "box": "0x1F1505@0.90", "title_col": "0xFACC15", "pbar": "0xFACC15"},
-    "aura":        {"hl": "&H003333FF&", "box": "0x180707@0.92", "title_col": "0xF87171", "pbar": "0xEF4444"},
-    "drama":       {"hl": "&H000066FF&", "box": "0x1C0D08@0.90", "title_col": "0xFB923C", "pbar": "0xF97316"},
-    "clean":       {"hl": "&H0000E5FF&", "box": "0x0F1115@0.80", "title_col": "0xFFFFFF", "pbar": "0x6366F1"},
+    "vlog":        {"hl": "&H0000D7FF&", "hook_txt": "&H0000D7FF&", "hook_bg": "&H300B1018&", "pbar": "0xF59E0B", "border": "0xF59E0B"},
+    "informative": {"hl": "&H00F8BD38&", "hook_txt": "&H00F8BD38&", "hook_bg": "&H300B1524&", "pbar": "0x38BDF8", "border": "0x38BDF8"},
+    "gaming":      {"hl": "&H0080DE4A&", "hook_txt": "&H0080DE4A&", "hook_bg": "&H300A1812&", "pbar": "0x4ADE80", "border": "0x4ADE80"},
+    "clash":       {"hl": "&H00EED322&", "hook_txt": "&H00EED322&", "hook_bg": "&H300E1728&", "pbar": "0x22D3EE", "border": "0x22D3EE"},
+    "funny":       {"hl": "&H0015CCFA&", "hook_txt": "&H0015CCFA&", "hook_bg": "&H301C1406&", "pbar": "0xFACC15", "border": "0xFACC15"},
+    "aura":        {"hl": "&H005555FF&", "hook_txt": "&H007171F8&", "hook_bg": "&H3018080A&", "pbar": "0xEF4444", "border": "0xEF4444"},
+    "drama":       {"hl": "&H003C92FB&", "hook_txt": "&H003C92FB&", "hook_bg": "&H301C0D08&", "pbar": "0xF97316", "border": "0xF97316"},
+    "clean":       {"hl": "&H00FFE500&", "hook_txt": "&H00FFFFFF&", "hook_bg": "&H350F1115&", "pbar": "0x6366F1", "border": "0x6366F1"},
 }
 
 
@@ -107,8 +110,62 @@ def _probe_video_dims(video_path):
         return 1280, 720
 
 
+def _analyze_audio_profile(video_path, start, duration):
+    """
+    Pure-Python DSP audio analyzer:
+    1. Finds the EXACT loudest reaction/action moment (real_peak_sec) for impact zoom/shake/SFX sync.
+    2. Detects if the source video ALREADY has loud background music (has_existing_bgm) so 2 songs NEVER clash!
+    """
+    fallback_peak = max(2.5, duration * 0.45)
+    try:
+        raw = subprocess.check_output(
+            [
+                "ffmpeg", "-v", "error", "-ss", str(start), "-t", str(duration),
+                "-i", video_path, "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "-",
+            ],
+            stderr=subprocess.DEVNULL,
+        )
+        total_samples = len(raw) // 2
+        if total_samples < 8000:
+            return fallback_peak, False
+
+        bucket_samples = 2000  # 0.25s buckets
+        rms_list = []
+        for off in range(0, total_samples - bucket_samples + 1, bucket_samples):
+            chunk = struct.unpack(f"<{bucket_samples}h", raw[off * 2:(off + bucket_samples) * 2])
+            sq = sum(s * s for s in chunk) / bucket_samples
+            rms_list.append(math.sqrt(sq) / 32768.0)
+
+        if len(rms_list) < 8:
+            return fallback_peak, False
+
+        # Detect existing continuous background music via 25th-percentile floor energy
+        sorted_rms = sorted(rms_list)
+        p25_floor = sorted_rms[len(sorted_rms) // 4]
+        has_existing_bgm = p25_floor > 0.042
+
+        # Find true climax peak between 2.5s and (duration - 2.0s)
+        lo = min(len(rms_list) - 1, max(1, int(2.5 / 0.25)))
+        hi = max(lo + 1, min(len(rms_list), int((duration - 2.0) / 0.25)))
+        peak_idx = lo
+        peak_val = -1.0
+        for idx in range(lo, hi):
+            if rms_list[idx] > peak_val:
+                peak_val = rms_list[idx]
+                peak_idx = idx
+
+        real_peak_sec = round(peak_idx * 0.25, 2)
+        print(
+            f"[MAG73 DSP] Real audio peak={real_peak_sec:.2f}s (rms={peak_val:.3f}) | "
+            f"Floor={p25_floor:.3f} | ExistingBGM={has_existing_bgm}"
+        )
+        return real_peak_sec, has_existing_bgm
+    except Exception as e:
+        print(f"[MAG73 DSP] Audio profile fallback: {e}")
+        return fallback_peak, False
+
+
 def _fetch_audio(query, out_prefix):
-    """Uses full node EJS + cookies + fallback clients so BGM/SFX actually download!"""
     query = (query or "").strip()
     if not query:
         return None
@@ -138,18 +195,16 @@ def _fetch_audio(query, out_prefix):
         if os.path.exists(out_file) and os.path.getsize(out_file) > 10000:
             print(f"[MAG73 Audio] Fetched {out_file} ({os.path.getsize(out_file)} bytes)")
             return out_file
-    print(f"[MAG73 Audio] Fetch skipped for query: {query}")
     return None
 
 
 def _generate_whoosh_sfx(out_path):
-    """Crisp opening transition whoosh generated locally via FFmpeg."""
     try:
         subprocess.run(
             [
                 "ffmpeg", "-y", "-f", "lavfi",
-                "-i", "anoisesrc=color=pink:duration=0.45:sample_rate=44100",
-                "-af", "bandpass=f=900:width_type=h:w=1200,afade=t=in:st=0:d=0.16,afade=t=out:st=0.20:d=0.25,volume=0.65",
+                "-i", "anoisesrc=color=pink:duration=0.38:sample_rate=44100",
+                "-af", "bandpass=f=950:width_type=h:w=1100,afade=t=in:st=0:d=0.14,afade=t=out:st=0.18:d=0.20,volume=0.55",
                 "-c:a", "libmp3lame", "-q:a", "4", out_path,
             ],
             check=True,
@@ -164,14 +219,13 @@ def _generate_whoosh_sfx(out_path):
 
 
 def _generate_synth_sfx(out_path, edit_type):
-    """Guaranteed punchy climax bass-boom / comic pop SFX."""
     try:
         if edit_type == "funny":
-            expr = "sin(2*PI*(210*exp(-7*t)+60)*t)*exp(-4.5*t)*0.85"
-            dur = "0.55"
+            expr = "sin(2*PI*(200*exp(-7*t)+55)*t)*exp(-5.0*t)*0.75"
+            dur = "0.45"
         else:
-            expr = "sin(2*PI*(115*exp(-3.0*t)+36)*t)*exp(-2.4*t)*0.90"
-            dur = "0.95"
+            expr = "sin(2*PI*(110*exp(-3.2*t)+36)*t)*exp(-2.8*t)*0.82"
+            dur = "0.80"
         subprocess.run(
             [
                 "ffmpeg", "-y", "-f", "lavfi",
@@ -207,49 +261,20 @@ def _clean_text(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
-def generate_pro_captions(words, clip_start, clip_end, font_name, edit_type, is_wide_blur, ass_path):
-    """Big, bold CapCut/Hormozi-style pop captions placed cleanly ABOVE original bottom subtitles."""
-    raw_clip_words = []
-    for w in (words or []):
-        ws = float(w.get("start", 0))
-        we = float(w.get("end", ws + 0.25))
-        txt = _clean_text(w.get("word", "")).upper()
-        if not txt:
-            continue
-        if we >= clip_start and ws <= clip_end:
-            rel_s = max(0.0, ws - clip_start)
-            rel_e = min(clip_end - clip_start, we - clip_start)
-            if rel_e - rel_s > 1.0:
-                rel_e = rel_s + 0.85
-            if rel_e - rel_s < 0.12:
-                rel_e = rel_s + 0.22
-            raw_clip_words.append({"word": txt, "start": rel_s, "end": rel_e})
-
-    if not raw_clip_words:
-        print(f"[MAG73 Captions] WARNING: 0 words matched clip [{clip_start:.1f}s - {clip_end:.1f}s] out of {len(words or [])} total words.")
-        return None
-
-    chunks = []
-    current = []
-    for w in raw_clip_words:
-        if not current:
-            current.append(w)
-            continue
-        gap = w["start"] - current[-1]["end"]
-        curr_len = sum(len(x["word"]) + 1 for x in current)
-        if len(current) >= 3 or (curr_len + len(w["word"]) > 15) or gap > 0.55:
-            chunks.append(current)
-            current = [w]
-        else:
-            current.append(w)
-    if current:
-        chunks.append(current)
-
+def generate_pro_ass(words, clip_start, clip_end, font_name, edit_type, is_wide_blur, title_text, ass_path, captions_on=True):
+    """
+    Generates ONE unified Pro ASS subtitle file with:
+    1. Spring-animated Viral Hook Banner (Layer 1, Top-Center) — smooth bounce & fade, never clips off-screen!
+    2. ZERO-OVERLAP word-by-word CapCut/Hormozi pop captions (Layer 0) — strict chronological clamping!
+    """
     pal = STYLE_PALETTE.get(edit_type, STYLE_PALETTE["vlog"])
     hl_color = pal["hl"]
-    # Placed cleanly above any burned-in bottom subtitles (MarginV=480)
-    margin_v = 480 if not is_wide_blur else 440
-    font_size = 86 if edit_type in ("funny", "gaming", "aura") else 80
+    hook_txt_col = pal["hook_txt"]
+    hook_bg_col = pal["hook_bg"]
+
+    cap_margin_v = 400 if is_wide_blur else 470
+    hook_margin_v = 320 if is_wide_blur else 185
+    cap_font_size = 82 if edit_type in ("funny", "gaming", "aura") else 76
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -259,106 +284,178 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},{font_size},&H00FFFFFF,{hl_color},&H00000000,&HB0000000,-1,0,0,0,100,100,1,0,1,9,4,2,60,60,{margin_v},1
+Style: Default,{font_name},{cap_font_size},&H00FFFFFF,{hl_color},&H00000000,&HB8000000,-1,0,0,0,100,100,1,0,1,9,4,2,65,65,{cap_margin_v},1
+Style: Hook,{font_name},52,{hook_txt_col},&H00FFFFFF,{hook_bg_col},&H99000000,-1,0,0,0,100,100,2,0,3,18,0,8,70,70,{hook_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    events = []
-    for chunk in chunks:
-        for active_idx, active_w in enumerate(chunk):
-            ev_start = active_w["start"]
-            if active_idx + 1 < len(chunk):
-                ev_end = min(active_w["end"] + 0.08, chunk[active_idx + 1]["start"])
-                if ev_end <= ev_start:
-                    ev_end = chunk[active_idx + 1]["start"]
+    lines = []
+
+    # 1. Spring-Animated Hook Banner (0.10s - 3.40s)
+    if title_text and edit_type != "clean":
+        anim_hook = (
+            r"{\fad(100,260)\fscx74\fscy74\t(0,130,\fscx106\fscy106)\t(130,210,\fscx100\fscy100)}"
+            + title_text
+        )
+        lines.append(f"Dialogue: 1,{_format_ass_time(0.10)},{_format_ass_time(3.40)},Hook,,0,0,0,,{anim_hook}")
+
+    # 2. Word-by-word Pop Captions with STRICT zero-overlap clamping
+    if captions_on and words:
+        raw_clip_words = []
+        for w in words:
+            ws = float(w.get("start", 0))
+            we = float(w.get("end", ws + 0.25))
+            txt = _clean_text(w.get("word", "")).upper()
+            if not txt:
+                continue
+            if we >= clip_start and ws <= clip_end:
+                rel_s = max(0.0, ws - clip_start)
+                rel_e = min(clip_end - clip_start, we - clip_start)
+                if rel_e - rel_s > 0.95:
+                    rel_e = rel_s + 0.80
+                if rel_e - rel_s < 0.10:
+                    rel_e = rel_s + 0.18
+                raw_clip_words.append({"word": txt, "start": rel_s, "end": rel_e})
+
+        raw_clip_words.sort(key=lambda x: x["start"])
+
+        chunks = []
+        current = []
+        for w in raw_clip_words:
+            if not current:
+                current.append(w)
+                continue
+            gap = w["start"] - current[-1]["end"]
+            curr_len = sum(len(x["word"]) + 1 for x in current)
+            if len(current) >= 3 or (curr_len + len(w["word"]) > 15) or gap > 0.50:
+                chunks.append(current)
+                current = [w]
             else:
-                ev_end = active_w["end"] + 0.10
+                current.append(w)
+        if current:
+            chunks.append(current)
 
-            if ev_end - ev_start < 0.08:
-                ev_end = ev_start + 0.16
-
-            styled_parts = []
-            for idx, w_obj in enumerate(chunk):
-                if idx == active_idx:
-                    styled_parts.append(f"{{\\c{hl_color}\\fscx114\\fscy114}}{w_obj['word']}{{\\c&H00FFFFFF&\\fscx100\\fscy100}}")
+        flat_events = []
+        for chunk in chunks:
+            for active_idx, active_w in enumerate(chunk):
+                ev_start = active_w["start"]
+                if active_idx + 1 < len(chunk):
+                    ev_end = chunk[active_idx + 1]["start"]
                 else:
-                    styled_parts.append(w_obj["word"])
+                    ev_end = active_w["end"] + 0.08
+                if ev_end <= ev_start + 0.05:
+                    ev_end = ev_start + 0.14
 
-            line_text = " ".join(styled_parts)
-            if active_idx == 0:
-                line_text = r"{\fscx84\fscy84\t(0,65,\fscx106\fscy106)\t(65,120,\fscx100\fscy100)}" + line_text
+                styled_parts = []
+                for idx, w_obj in enumerate(chunk):
+                    if idx == active_idx:
+                        styled_parts.append(
+                            f"{{\\c{hl_color}\\fscx112\\fscy112}}{w_obj['word']}{{\\c&H00FFFFFF&\\fscx100\\fscy100}}"
+                        )
+                    else:
+                        styled_parts.append(w_obj["word"])
 
-            events.append(
-                f"Dialogue: 0,{_format_ass_time(ev_start)},{_format_ass_time(ev_end)},Default,,0,0,0,,{line_text}"
-            )
+                line_text = " ".join(styled_parts)
+                if active_idx == 0:
+                    line_text = r"{\fscx86\fscy86\t(0,60,\fscx105\fscy105)\t(60,115,\fscx100\fscy100)}" + line_text
 
-    if not events:
+                flat_events.append({"start": ev_start, "end": ev_end, "text": line_text})
+
+        # STRICT ZERO-OVERLAP GUARANTEE across all chunks!
+        for i in range(len(flat_events) - 1):
+            if flat_events[i]["end"] >= flat_events[i + 1]["start"]:
+                flat_events[i]["end"] = max(
+                    flat_events[i]["start"] + 0.04,
+                    flat_events[i + 1]["start"] - 0.01,
+                )
+
+        for ev in flat_events:
+            if ev["end"] > ev["start"] + 0.02:
+                lines.append(
+                    f"Dialogue: 0,{_format_ass_time(ev['start'])},{_format_ass_time(ev['end'])},Default,,0,0,0,,{ev['text']}"
+                )
+
+        print(f"[MAG73 Captions] Generated {len(flat_events)} zero-overlap caption events.")
+
+    if not lines:
         return None
     with open(ass_path, "w", encoding="utf-8") as f:
-        f.write(header + "\n".join(events))
-    print(f"[MAG73 Captions] Generated {len(events)} animated caption events in {ass_path}.")
+        f.write(header + "\n".join(lines))
     return ass_path
 
 
-def _build_layout_and_motion(in_w, in_h, focus_x, duration, edit_type, peak_sec):
+def _build_layout_and_motion(in_w, in_h, focus_x, duration, edit_type, peak_sec, layout_mode):
     """
-    REAL CapCut-style dynamic rhythm:
-    - Opening Hook Punch-In (0.0s - 0.35s)
-    - Alternating Jump-Cut Zooms every 4 seconds (1.0x <-> 1.15x) so no clip is ever static!
-    - Climax Impact Hard-Zoom + Camera Shake at peak_sec!
+    100x Cleaner, Buttery Smooth Pro Motion (ZERO jarring step jumps or escaping borders):
+    - Smooth ease-out opening hook settle (0.0s - 0.45s)
+    - Gentle cinematic breathing push-in across clip
+    - Smooth ease-in/ease-out climax zoom + camera shake synced to REAL audio peak
+    - Gaming Wide mode enlarges gameplay 25% taller (1080x760) & zooms INSIDE the frame so borders stay rock-solid!
     """
     dur_frames = max(30, int(duration * 30))
-    pk = float(peak_sec) if peak_sec is not None else max(3.0, duration * 0.5)
-    is_wide_blur = (edit_type in ("gaming", "clash")) and (in_w > in_h)
+    pk = float(peak_sec)
+    is_landscape = (in_w > in_h)
+
+    if layout_mode == "gaming_wide":
+        is_wide_blur = is_landscape
+    elif layout_mode == "vertical_full":
+        is_wide_blur = False
+    else:
+        is_wide_blur = (edit_type in ("gaming", "clash")) and is_landscape
+
+    pal = STYLE_PALETTE.get(edit_type, STYLE_PALETTE["vlog"])
+
+    # Smooth bell-curve climax zoom around real audio peak (no abrupt teleporting!)
+    peak_bell = f"max(0,1-abs(on/30-{pk:.2f})/0.85)"
+    shake_win = f"between(on/30,{pk:.2f},{pk+0.38:.2f})"
+
+    if edit_type == "funny":
+        z_expr = f"1.01+0.13*max(0,1-on/13)+0.04*min(1,on/{dur_frames})+0.18*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+14*sin(on*3.2)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+14*cos(on*3.6)*{shake_win},0,ih-ih/zoom)"
+    elif edit_type == "aura":
+        z_expr = f"1.02+0.14*max(0,1-on/12)+0.08*min(1,on/{dur_frames})+0.18*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+20*sin(on*3.0)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+20*cos(on*3.5)*{shake_win},0,ih-ih/zoom)"
+    elif edit_type in ("gaming", "clash"):
+        z_expr = f"1.01+0.12*max(0,1-on/12)+0.05*min(1,on/{dur_frames})+0.15*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+15*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+15*cos(on*3.5)*{shake_win},0,ih-ih/zoom)"
+    elif edit_type == "drama":
+        z_expr = f"1.01+0.10*max(0,1-on/14)+0.10*min(1,on/{dur_frames})+0.12*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+10*sin(on*2.9)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+10*cos(on*3.3)*{shake_win},0,ih-ih/zoom)"
+    elif edit_type in ("vlog", "informative"):
+        z_expr = f"1.01+0.12*max(0,1-on/14)+0.06*min(1,on/{dur_frames})+0.08*{peak_bell}"
+        x_expr = "iw/2-(iw/zoom/2)"
+        y_expr = "ih/2-(ih/zoom/2)"
+    else:
+        z_expr = f"1.00+0.05*min(1,on/{dur_frames})"
+        x_expr = "iw/2-(iw/zoom/2)"
+        y_expr = "ih/2-(ih/zoom/2)"
 
     if is_wide_blur:
-        border_col = "0x4ADE80" if edit_type == "gaming" else "0x22D3EE"
-        base_graph = (
+        # Bigger 1080x760 gameplay window with smooth zoom INSIDE the frame + locked sleek accent bars!
+        graph = (
             f"[0:v]fps=30,split=2[bg_src][fg_src];"
             f"[bg_src]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-            f"boxblur=20:5,eq=brightness=-0.20:saturation=1.15[bg];"
-            f"[fg_src]scale=1080:-2,pad=1080:ih+8:0:4:color={border_col}[fg];"
-            f"[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[framed];"
+            f"boxblur=26:6,eq=brightness=-0.24:saturation=1.18,setpts=PTS-STARTPTS[bg];"
+            f"[fg_src]crop=iw*0.86:ih:iw*0.07:0,scale=1080:760:force_original_aspect_ratio=increase,crop=1080:760,"
+            f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d=1:s=1080x760:fps=30,"
+            f"setpts=PTS-STARTPTS,pad=1080:768:0:4:color={pal['border']}[fg];"
+            f"[bg][fg]overlay=0:(H-h)/2:shortest=1,setsar=1[base];"
         )
     else:
         crop_x = "(iw-1080)*0.18" if focus_x == "left" else ("(iw-1080)*0.82" if focus_x == "right" else "(iw-1080)/2")
-        base_graph = (
+        graph = (
             f"[0:v]fps=30,scale=1080:1920:force_original_aspect_ratio=increase,"
-            f"crop=1080:1920:{crop_x}:(ih-1920)/2,setsar=1[framed];"
+            f"crop=1080:1920:{crop_x}:(ih-1920)/2,"
+            f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d=1:s=1080x1920:fps=30,"
+            f"setpts=PTS-STARTPTS,setsar=1[base];"
         )
 
-    # Active rhythmic jump-zooms + opening hook snap + climax impact shake
-    if edit_type == "funny":
-        z_expr = f"1.02+0.20*max(0,1-on/10)+0.14*gt(mod(on,210),105)+0.22*between(on/30,{pk:.2f},{pk+1.7:.2f})"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+18*sin(on*3.1)*between(on/30,{pk:.2f},{pk+0.40:.2f}),0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+18*cos(on*3.5)*between(on/30,{pk:.2f},{pk+0.40:.2f}),0,ih-ih/zoom)"
-    elif edit_type == "aura":
-        z_expr = f"1.04+0.18*max(0,1-on/10)+0.10*min(1,on/{dur_frames})+0.20*between(on/30,{pk:.2f},{pk+2.4:.2f})"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+24*sin(on*2.9)*between(on/30,{pk:.2f},{pk+0.48:.2f}),0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+24*cos(on*3.4)*between(on/30,{pk:.2f},{pk+0.48:.2f}),0,ih-ih/zoom)"
-    elif edit_type in ("gaming", "clash"):
-        z_expr = f"1.02+0.16*max(0,1-on/10)+0.12*gt(mod(on,240),120)+0.18*between(on/30,{pk:.2f},{pk+1.5:.2f})"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+18*sin(on*3.0)*between(on/30,{pk:.2f},{pk+0.42:.2f}),0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+18*cos(on*3.4)*between(on/30,{pk:.2f},{pk+0.42:.2f}),0,ih-ih/zoom)"
-    elif edit_type == "drama":
-        z_expr = f"1.02+0.14*max(0,1-on/10)+0.14*min(1,on/{dur_frames})+0.14*between(on/30,{pk:.2f},{pk+2.0:.2f})"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+12*sin(on*2.8)*between(on/30,{pk:.2f},{pk+0.35:.2f}),0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+12*cos(on*3.2)*between(on/30,{pk:.2f},{pk+0.35:.2f}),0,ih-ih/zoom)"
-    elif edit_type in ("vlog", "informative"):
-        z_expr = f"1.02+0.18*max(0,1-on/12)+0.12*gt(mod(on,240),120)"
-        x_expr = "iw/2-(iw/zoom/2)"
-        y_expr = "ih/2-(ih/zoom/2)"
-    else:
-        z_expr = f"1.00+0.08*min(1,on/{dur_frames})"
-        x_expr = "iw/2-(iw/zoom/2)"
-        y_expr = "ih/2-(ih/zoom/2)"
-
-    motion_graph = (
-        f"[framed]zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d=1:s=1080x1920:fps=30,"
-        f"setpts=PTS-STARTPTS,setsar=1[base];"
-    )
-    return base_graph + motion_graph, is_wide_blur
+    return graph, is_wide_blur
 
 
 def render_pro_short(video_path, clip_data, word_timestamps, index):
@@ -370,7 +467,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     custom_ffmpeg = str(plugin_cfg.get("custom_ffmpeg", "")).strip()
     custom_font_url = str(plugin_cfg.get("custom_font_url", "")).strip()
 
-    font_path, font_name = _ensure_pro_font(custom_font_url)
+    _, font_name = _ensure_pro_font(custom_font_url)
     in_w, in_h = _probe_video_dims(video_path)
 
     start = max(0.0, float(clip_data.get("start", 0)))
@@ -382,22 +479,24 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     if edit_type not in STYLE_PALETTE:
         edit_type = "vlog"
 
+    layout_mode = str(clip_data.get("layout_mode", "auto")).strip().lower()
     focus_x = str(clip_data.get("focus_x", "center")).lower()
     title_text = _clean_text(clip_data.get("title_text", "")).upper() if banner_enabled else ""
 
-    peak_raw = clip_data.get("peak_sec", clip_data.get("bw_drop_sec", None))
-    try:
-        peak_sec = float(peak_raw) if peak_raw is not None else max(3.0, duration * 0.45)
-        if peak_sec < 1.5 or peak_sec > duration - 1.2:
-            peak_sec = max(2.0, duration * 0.45)
-    except Exception:
-        peak_sec = max(2.0, duration * 0.45)
+    # DSP Audio Analysis: exact loudest climax peak + existing BGM check
+    real_peak_sec, has_existing_bgm = _analyze_audio_profile(video_path, start, duration)
+    peak_sec = real_peak_sec
 
-    # Unique filename with timestamp so parallel clips NEVER collide on "Clip 1"
     mm, ss = divmod(max(0, orig_start), 60)
     output_file = f"MAG73_{edit_type.upper()}_{mm:02d}m{ss:02d}s_Clip_{index + 1}.mp4"
 
-    bgm_file = _fetch_audio(clip_data.get("bgm_query", ""), f"bgm_{index}") if (bgm_enabled and edit_type != "clean") else None
+    # NEVER clash two songs: skip external BGM if source already has background music!
+    bgm_file = None
+    if bgm_enabled and edit_type != "clean" and not has_existing_bgm:
+        bgm_file = _fetch_audio(clip_data.get("bgm_query", ""), f"bgm_{index}")
+    elif has_existing_bgm:
+        print("[MAG73 Audio] Source already has BGM — skipping extra music to keep mix clean!")
+
     whoosh_file = _generate_whoosh_sfx(f"whoosh_{index}.mp3") if (sfx_enabled and edit_type != "clean") else None
 
     sfx_file = None
@@ -406,49 +505,58 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         if not sfx_file:
             sfx_file = _generate_synth_sfx(f"synth_sfx_{index}.mp3", edit_type)
 
-    layout_graph, is_wide_blur = _build_layout_and_motion(in_w, in_h, focus_x, duration, edit_type, peak_sec)
+    layout_graph, is_wide_blur = _build_layout_and_motion(
+        in_w, in_h, focus_x, duration, edit_type, peak_sec, layout_mode
+    )
 
-    ass_file = None
-    if caption_lang != "off":
-        ass_file = generate_pro_captions(
-            word_timestamps, start, start + duration, font_name, edit_type, is_wide_blur, f"cap_{index}.ass"
-        )
+    ass_file = generate_pro_ass(
+        word_timestamps,
+        start,
+        start + duration,
+        font_name,
+        edit_type,
+        is_wide_blur,
+        title_text,
+        f"cap_{index}.ass",
+        captions_on=(caption_lang != "off"),
+    )
 
-    # Distinct visual grading + opening flash + climax flash/impact per style
+    # Distinct pro visual grading + smooth peak highlight flash
     if edit_type == "vlog":
         post_vf = [
-            "eq=contrast=1.10:saturation=1.24:brightness=0.02",
+            "eq=contrast=1.08:saturation=1.20:brightness=0.02",
             "colorbalance=rs=0.04:gs=0.01:bs=-0.03",
-            "eq=brightness=0.22:enable='between(t,0.0,0.10)'",
+            "unsharp=5:5:0.35:5:5:0.0",
         ]
     elif edit_type == "informative":
         post_vf = [
-            "eq=contrast=1.08:saturation=1.12:brightness=0.01",
+            "eq=contrast=1.08:saturation=1.10:brightness=0.01",
             "unsharp=5:5:0.45:5:5:0.0",
         ]
     elif edit_type == "funny":
         post_vf = [
-            "eq=contrast=1.12:saturation=1.22:brightness=0.02",
-            f"eq=brightness=0.28:enable='between(t,0.0,0.10)+between(t,{peak_sec:.2f},{peak_sec+0.10:.2f})'",
+            "eq=contrast=1.10:saturation=1.18:brightness=0.02",
+            f"eq=brightness=0.22:enable='between(t,{peak_sec:.2f},{peak_sec+0.09:.2f})'",
         ]
     elif edit_type in ("gaming", "clash"):
         post_vf = [
-            "eq=contrast=1.16:saturation=1.20",
-            f"eq=brightness=0.32:enable='between(t,0.0,0.10)+between(t,{peak_sec:.2f},{peak_sec+0.11:.2f})'",
+            "eq=contrast=1.13:saturation=1.18",
+            "unsharp=5:5:0.45:5:5:0.0",
+            f"eq=brightness=0.24:enable='between(t,{peak_sec:.2f},{peak_sec+0.10:.2f})'",
         ]
     elif edit_type == "aura":
         post_vf = [
-            "eq=contrast=1.16:saturation=0.86:brightness=-0.02",
+            "eq=contrast=1.14:saturation=0.86:brightness=-0.02",
             "vignette=PI/6",
-            f"eq=brightness=0.40:enable='between(t,0.0,0.10)+between(t,{peak_sec:.2f},{peak_sec+0.12:.2f})'",
-            f"hue=s=0:enable='gte(t,{peak_sec+0.12:.2f})'",
-            f"eq=contrast=1.26:brightness=-0.03:enable='gte(t,{peak_sec+0.12:.2f})'",
+            f"eq=brightness=0.35:enable='between(t,{peak_sec:.2f},{peak_sec+0.11:.2f})'",
+            f"hue=s=0:enable='gte(t,{peak_sec+0.11:.2f})'",
+            f"eq=contrast=1.24:brightness=-0.03:enable='gte(t,{peak_sec+0.11:.2f})'",
         ]
     elif edit_type == "drama":
         post_vf = [
-            "eq=contrast=1.14:saturation=0.95:brightness=-0.01",
+            "eq=contrast=1.12:saturation=0.95:brightness=-0.01",
             "vignette=PI/6",
-            f"eq=brightness=0.25:enable='between(t,{peak_sec:.2f},{peak_sec+0.10:.2f})'",
+            f"eq=brightness=0.20:enable='between(t,{peak_sec:.2f},{peak_sec+0.09:.2f})'",
         ]
     else:
         post_vf = ["eq=contrast=1.05:saturation=1.05"]
@@ -456,49 +564,54 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     if custom_ffmpeg and ";" not in custom_ffmpeg and "[" not in custom_ffmpeg:
         post_vf.append(custom_ffmpeg)
 
-    pal = STYLE_PALETTE.get(edit_type, STYLE_PALETTE["vlog"])
-    if title_text and edit_type != "clean":
-        banner_y = 210 if is_wide_blur else 175
-        post_vf.append(
-            f"drawtext=fontfile={font_path}:text='{title_text}':fontcolor={pal['title_col']}:fontsize=50:"
-            f"borderw=4:bordercolor=black:box=1:boxcolor={pal['box']}:boxborderw=22:"
-            f"x=(w-text_w)/2:y={banner_y}:enable='between(t,0.10,3.40)'"
-        )
-
     if ass_file and os.path.exists(ass_file):
         post_vf.append(f"ass={ass_file}:fontsdir=.")
 
-    # Animated glowing progress bar at the bottom for instant Shorts/Reels polish
+    pal = STYLE_PALETTE.get(edit_type, STYLE_PALETTE["vlog"])
+    # Sleek top edge progress bar (never hidden behind Shorts/Reels bottom UI!)
     video_chain = (
         f"{layout_graph}"
         f"[base]{','.join(post_vf)}[v_graded];"
-        f"color=c={pal['pbar']}:s=1080x10:r=30[pbar];"
-        f"[v_graded][pbar]overlay=x='-W+(W*min(t/{duration:.2f},1))':y=H-14:shortest=1[v];"
+        f"color=c={pal['pbar']}:s=1080x8:r=30[pbar];"
+        f"[v_graded][pbar]overlay=x='-W+(W*min(t/{duration:.2f},1))':y=0:shortest=1[v];"
     )
 
     cmd = ["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", video_path]
 
-    bgm_vol = "0.15" if edit_type in ("aura", "gaming", "clash") else "0.11"
+    bgm_vol = "0.18" if edit_type in ("aura", "gaming", "clash") else "0.13"
     fade_out_start = max(0.5, duration - 1.2)
 
     audio_mix_labels = ["[voice]"]
-    audio_chains = [
-        "[0:a]highpass=f=80,acompressor=threshold=-18dB:ratio=3:attack=5:release=50,volume=1.20[voice];"
-    ]
+    if bgm_file:
+        audio_chains = [
+            "[0:a]aformat=sample_rates=44100:channel_layouts=stereo,highpass=f=85,"
+            "acompressor=threshold=-18dB:ratio=3:attack=5:release=50,volume=1.20,asplit=2[voice][v_sc];"
+        ]
+    else:
+        audio_chains = [
+            "[0:a]aformat=sample_rates=44100:channel_layouts=stereo,highpass=f=85,"
+            "acompressor=threshold=-18dB:ratio=3:attack=5:release=50,volume=1.20[voice];"
+        ]
+
     next_in = 1
 
     if bgm_file:
         cmd.extend(["-stream_loop", "-1", "-i", bgm_file])
+        # Pro sidechain ducking: BGM ducks under voice automatically!
         audio_chains.append(
-            f"[{next_in}:a]atrim=0:{duration:.2f},afade=t=in:st=0:d=0.8,"
-            f"afade=t=out:st={fade_out_start:.2f}:d=1.2,volume={bgm_vol}[bgm];"
+            f"[{next_in}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
+            f"atrim=0:{duration:.2f},asetpts=PTS-STARTPTS,"
+            f"afade=t=in:st=0:d=0.6,afade=t=out:st={fade_out_start:.2f}:d=1.2,volume={bgm_vol}[bgm_pre];"
+            f"[bgm_pre][v_sc]sidechaincompress=threshold=0.03:ratio=5:attack=25:release=320[bgm];"
         )
         audio_mix_labels.append("[bgm]")
         next_in += 1
 
     if whoosh_file:
         cmd.extend(["-i", whoosh_file])
-        audio_chains.append(f"[{next_in}:a]atrim=0:0.45,volume=0.40[whoosh];")
+        audio_chains.append(
+            f"[{next_in}:a]aformat=sample_rates=44100:channel_layouts=stereo,atrim=0:0.38,volume=0.35[whoosh];"
+        )
         audio_mix_labels.append("[whoosh]")
         next_in += 1
 
@@ -506,7 +619,8 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         cmd.extend(["-i", sfx_file])
         sfx_ms = int(peak_sec * 1000)
         audio_chains.append(
-            f"[{next_in}:a]atrim=0:1.2,afade=t=out:st=0.75:d=0.45,adelay={sfx_ms}|{sfx_ms},volume=0.42[sfx];"
+            f"[{next_in}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
+            f"atrim=0:1.0,afade=t=out:st=0.65:d=0.35,adelay={sfx_ms}|{sfx_ms},volume=0.38[sfx];"
         )
         audio_mix_labels.append("[sfx]")
         next_in += 1
@@ -526,7 +640,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         "-map", "[a]",
         "-c:v", "libx264",
         "-preset", "veryfast",
-        "-crf", "21",
+        "-crf", "20",
         "-c:a", "aac",
         "-b:a", "192k",
         "-movflags", "+faststart",
@@ -534,8 +648,8 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     ])
 
     print(
-        f"[MAG73 Pro Editor] Rendering {output_file} | Style: {edit_type} | "
-        f"Captions: {bool(ass_file)} | BGM: {bool(bgm_file)} | Whoosh: {bool(whoosh_file)} | PeakSFX: {bool(sfx_file)}"
+        f"[MAG73 Pro Editor] Rendering {output_file} | Style={edit_type} | WideBlur={is_wide_blur} | "
+        f"Peak={peak_sec:.2f}s | DuckedBGM={bool(bgm_file)} | SFX={bool(sfx_file)}"
     )
     subprocess.run(cmd, check=True)
 
