@@ -8,7 +8,6 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
 
 
 def _has_valid_cookies():
-    """Checks if cookies.txt exists and has actual cookie lines."""
     if not os.path.exists("cookies.txt"):
         return False
     try:
@@ -19,7 +18,6 @@ def _has_valid_cookies():
             return True
     except Exception:
         pass
-    print("[MAG73 Cookies] Warning: cookies.txt is empty or invalid!")
     return False
 
 
@@ -29,33 +27,35 @@ def _base_ytdlp_cmd():
         "--no-playlist",
         "--js-runtimes", "node",
         "--remote-components", "ejs:github",
-        "--retries", "3",
-        "--fragment-retries", "3",
+        "--socket-timeout", "15",
+        "--retries", "2",
+        "--fragment-retries", "2",
     ]
     if _has_valid_cookies():
         cmd.extend(["--cookies", "cookies.txt"])
     return cmd
 
 
-def _run_ytdlp_with_fallback(base_args, url):
-    """
-    Tries multiple YouTube player client strategies to bypass bot/format blocks.
-    """
+def _run_ytdlp_with_fallback(base_args, url, timeout_sec=85):
+    """Runs yt-dlp with strict timeout so a stalled connection NEVER hangs a job for 50 minutes."""
     strategies = [
-        [],  # Default yt-dlp + cookies
+        [],
         ["--extractor-args", "youtube:player_client=web,mweb"],
         ["--extractor-args", "youtube:player_client=ios,web"],
-        ["--extractor-args", "youtube:player_client=android,web"],
     ]
     last_stderr = ""
     for extra in strategies:
         cmd = _base_ytdlp_cmd() + extra + base_args + [url]
-        print(f"[MAG73 Input Engine] Running yt-dlp strategy: {extra or 'default'}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            return True, ""
-        last_stderr = (result.stderr or result.stdout or "").strip()
-        print(f"[MAG73 Input Engine] Strategy failed: {last_stderr[-200:]}")
+        print(f"[MAG73 Input Engine] Running yt-dlp strategy: {extra or 'default'} (timeout={timeout_sec}s)")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec)
+            if result.returncode == 0:
+                return True, ""
+            last_stderr = (result.stderr or result.stdout or "").strip()
+            print(f"[MAG73 Input Engine] Strategy failed: {last_stderr[-180:]}")
+        except subprocess.TimeoutExpired:
+            last_stderr = f"yt-dlp timed out after {timeout_sec}s"
+            print(f"[MAG73 Input Engine] {last_stderr}, switching strategy...")
     return False, last_stderr
 
 
@@ -64,7 +64,7 @@ def _download_github_asset(asset_url, out_path="source_video.mp4"):
     if GITHUB_TOKEN:
         headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
     print("[MAG73 Input Engine] Downloading uploaded video from GitHub Release...")
-    with requests.get(asset_url, headers=headers, stream=True, timeout=180) as r:
+    with requests.get(asset_url, headers=headers, stream=True, timeout=120) as r:
         r.raise_for_status()
         with open(out_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=1024 * 256):
@@ -76,7 +76,6 @@ def _download_github_asset(asset_url, out_path="source_video.mp4"):
 
 
 def _extract_comment_signals(info_json_path="source_video.info.json"):
-    """Extracts timestamps and top comments from yt-dlp info.json."""
     signals = {"chat_spikes": [], "comment_timestamps": [], "top_comments": []}
     if not os.path.exists(info_json_path):
         return signals
@@ -105,10 +104,6 @@ def _extract_comment_signals(info_json_path="source_video.info.json"):
 
 
 def fetch_media(source_url, mode="vod"):
-    """
-    Full media download for VOD / Scan / Live / Upload modes.
-    Returns: (video_path, audience_signals)
-    """
     mode = (mode or "vod").strip().lower()
     out_path = "source_video.mp4"
     if os.path.exists(out_path):
@@ -121,7 +116,6 @@ def fetch_media(source_url, mode="vod"):
         return out_path, {"chat_spikes": [], "comment_timestamps": [], "top_comments": []}
 
     if mode == "live":
-        # Capture recent 45s live segment
         args = [
             "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
             "--merge-output-format", "mp4",
@@ -129,67 +123,62 @@ def fetch_media(source_url, mode="vod"):
             "--download-sections", "*0-45",
             "-o", out_path,
         ]
-        ok, err = _run_ytdlp_with_fallback(args, source_url)
+        ok, err = _run_ytdlp_with_fallback(args, source_url, timeout_sec=75)
         if not ok or not os.path.exists(out_path):
-            # Fallback: direct 35s capture without --live-from-start
             args_fb = [
                 "-f", "best[height<=720]/best",
                 "--merge-output-format", "mp4",
                 "--download-sections", "*0-35",
                 "-o", out_path,
             ]
-            ok, err = _run_ytdlp_with_fallback(args_fb, source_url)
+            ok, err = _run_ytdlp_with_fallback(args_fb, source_url, timeout_sec=75)
         if not ok or not os.path.exists(out_path):
-            raise RuntimeError(f"Live capture failed: {err[-250:]}")
+            raise RuntimeError(f"Live capture failed: {err[-220:]}")
         return out_path, {"chat_spikes": [15], "comment_timestamps": [], "top_comments": []}
 
-    # Default VOD / Scan mode
     args = [
         "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]/best",
         "--merge-output-format", "mp4",
         "--write-info-json",
         "--get-comments",
-        "--extractor-args", "youtube:max_comments=60,all,0,0",
+        "--extractor-args", "youtube:max_comments=50,all,0,0",
         "-o", out_path,
     ]
-    ok, err = _run_ytdlp_with_fallback(args, source_url)
+    ok, err = _run_ytdlp_with_fallback(args, source_url, timeout_sec=140)
     if not ok or not os.path.exists(out_path):
-        # Retry without comments in case comment API caused failure
         args_simple = [
             "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
             "--merge-output-format", "mp4",
             "-o", out_path,
         ]
-        ok, err = _run_ytdlp_with_fallback(args_simple, source_url)
+        ok, err = _run_ytdlp_with_fallback(args_simple, source_url, timeout_sec=120)
 
     if not ok or not os.path.exists(out_path):
-        raise RuntimeError(f"Video download failed: {err[-250:]}")
+        raise RuntimeError(f"Video download failed: {err[-220:]}")
 
     signals = _extract_comment_signals("source_video.info.json")
     return out_path, signals
 
 
 def fetch_clip_segment(source_url, start_sec, end_sec, mode="vod"):
-    """
-    Fast single-clip segment download for parallel individual clip rendering.
-    Downloads only [start_sec - 2s, end_sec + 2s] and returns (segment_path, offset_sec).
-    """
+    """Fast single-clip download with extra 2s tail for clean sentence-end snapping & strict 65s timeout."""
     mode = (mode or "vod").strip().lower()
     seg_path = "clip_segment.mp4"
     if os.path.exists(seg_path):
         os.remove(seg_path)
 
     pad_start = max(0.0, float(start_sec) - 1.5)
-    pad_end = max(pad_start + 5.0, float(end_sec) + 1.5)
+    pad_end = max(pad_start + 6.0, float(end_sec) + 2.5)
 
     if mode == "upload":
         full_path = _download_github_asset(source_url, "source_video.mp4")
         subprocess.run(
             [
                 "ffmpeg", "-y", "-ss", str(pad_start), "-to", str(pad_end),
-                "-i", full_path, "-c", "copy", seg_path
+                "-i", full_path, "-c", "copy", seg_path,
             ],
             check=True,
+            timeout=60,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -203,12 +192,23 @@ def fetch_clip_segment(source_url, start_sec, end_sec, mode="vod"):
         "--force-keyframes-at-cuts",
         "-o", seg_path,
     ]
-    ok, err = _run_ytdlp_with_fallback(args, source_url)
+    ok, err = _run_ytdlp_with_fallback(args, source_url, timeout_sec=65)
     if ok and os.path.exists(seg_path) and os.path.getsize(seg_path) > 20000:
         print(f"[MAG73 Input Engine] Fast segment ready: {section_arg}")
         return seg_path, pad_start
 
-    # Safe fallback: download full video and return offset 0
+    # Fast fallback without --force-keyframes-at-cuts (avoids ffmpeg re-encode stall)
+    args_fast = [
+        "-f", "best[height<=720]/best",
+        "--merge-output-format", "mp4",
+        "--download-sections", section_arg,
+        "-o", seg_path,
+    ]
+    ok, err = _run_ytdlp_with_fallback(args_fast, source_url, timeout_sec=55)
+    if ok and os.path.exists(seg_path) and os.path.getsize(seg_path) > 20000:
+        print(f"[MAG73 Input Engine] Fast fallback segment ready: {section_arg}")
+        return seg_path, pad_start
+
     print("[MAG73 Input Engine] Segment download fallback to full video...")
     full_path, _ = fetch_media(source_url, mode="vod")
     return full_path, 0.0
