@@ -1,5 +1,6 @@
 import os
 import re
+import glob
 import json
 import subprocess
 import requests
@@ -36,8 +37,7 @@ def _base_ytdlp_cmd():
     return cmd
 
 
-def _run_ytdlp_with_fallback(base_args, url, timeout_sec=85):
-    """Runs yt-dlp with strict timeout so a stalled connection NEVER hangs a job for 50 minutes."""
+def _run_ytdlp_with_fallback(base_args, url, timeout_sec=80):
     strategies = [
         [],
         ["--extractor-args", "youtube:player_client=web,mweb"],
@@ -46,7 +46,7 @@ def _run_ytdlp_with_fallback(base_args, url, timeout_sec=85):
     last_stderr = ""
     for extra in strategies:
         cmd = _base_ytdlp_cmd() + extra + base_args + [url]
-        print(f"[MAG73 Input Engine] Running yt-dlp strategy: {extra or 'default'} (timeout={timeout_sec}s)")
+        print(f"[MAG73 Input Engine] yt-dlp strategy: {extra or 'default'} (timeout={timeout_sec}s)")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec)
             if result.returncode == 0:
@@ -75,32 +75,117 @@ def _download_github_asset(asset_url, out_path="source_video.mp4"):
     return out_path
 
 
-def _extract_comment_signals(info_json_path="source_video.info.json"):
-    signals = {"chat_spikes": [], "comment_timestamps": [], "top_comments": []}
-    if not os.path.exists(info_json_path):
+def _extract_signals_from_info(pattern="*info.json"):
+    """Extracts YouTube Most Replayed Heatmap spikes + Comment Timestamps + Title/Duration."""
+    signals = {
+        "chat_spikes": [],
+        "heatmap_spikes": [],
+        "comment_timestamps": [],
+        "top_comments": [],
+        "video_title": "",
+        "duration": 0.0,
+    }
+    matches = glob.glob(pattern)
+    if not matches:
         return signals
     try:
-        with open(info_json_path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(matches[0], "r", encoding="utf-8", errors="ignore") as f:
             data = json.load(f)
+
+        signals["video_title"] = str(data.get("title", "") or "")
+        signals["duration"] = float(data.get("duration") or 0.0)
+
+        # YouTube Most Replayed Heatmap (goldmine for viral moments!)
+        heatmap = data.get("heatmap") or []
+        if isinstance(heatmap, list) and heatmap:
+            ranked = sorted(
+                [h for h in heatmap if isinstance(h, dict) and float(h.get("value", 0)) >= 0.55],
+                key=lambda x: float(x.get("value", 0)),
+                reverse=True,
+            )
+            spikes = []
+            for h in ranked:
+                st = int(round(float(h.get("start_time", 0))))
+                if all(abs(st - prev) >= 18 for prev in spikes):
+                    spikes.append(st)
+                if len(spikes) >= 12:
+                    break
+            signals["heatmap_spikes"] = sorted(spikes)
+            print(f"[MAG73 Signals] YouTube Most-Replayed spikes: {signals['heatmap_spikes']}")
+
         comments = data.get("comments") or []
         ts_set = set()
         top_texts = []
-        for c in comments[:80]:
+        for c in comments[:60]:
             txt = str(c.get("text", "")).strip()
             if not txt:
                 continue
-            if len(top_texts) < 15:
+            if len(top_texts) < 12:
                 top_texts.append(txt[:160])
             for m in re.finditer(r"\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b", txt):
                 g1, g2, g3 = m.group(1), m.group(2), m.group(3)
                 sec = (int(g1) * 3600 + int(g2) * 60 + int(g3)) if g3 else (int(g1) * 60 + int(g2))
                 if sec > 0:
                     ts_set.add(sec)
-        signals["comment_timestamps"] = sorted(list(ts_set))[:30]
+        signals["comment_timestamps"] = sorted(list(ts_set))[:25]
         signals["top_comments"] = top_texts
     except Exception as e:
-        print(f"[MAG73 Signals] Comment parse warning: {e}")
+        print(f"[MAG73 Signals] Info parse warning: {e}")
     return signals
+
+
+def fetch_scan_media(source_url, is_upload=False):
+    """
+    ULTRA-FAST SCAN FETCHER (4x faster):
+    For YouTube URLs, downloads ONLY lightweight audio + Most Replayed Heatmap + Comments (seconds, not minutes!).
+    Returns: (video_path_or_None, audio_path, signals)
+    """
+    audio_path = "scan_audio.mp3"
+    for f in glob.glob("scan_audio*"):
+        try:
+            os.remove(f)
+        except Exception:
+            pass
+
+    if is_upload:
+        vpath = _download_github_asset(source_url, "source_video.mp4")
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", vpath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k", audio_path],
+            check=True,
+            timeout=60,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return vpath, audio_path, {
+            "chat_spikes": [], "heatmap_spikes": [], "comment_timestamps": [],
+            "top_comments": [], "video_title": "", "duration": 0.0,
+        }
+
+    print("[MAG73 Fast Scan] Downloading lightweight audio + YouTube heatmap...")
+    args = [
+        "-f", "worstaudio[abr>=48]/bestaudio[abr<=96]/bestaudio/worst",
+        "-x", "--audio-format", "mp3", "--audio-quality", "7",
+        "--write-info-json",
+        "--get-comments",
+        "--extractor-args", "youtube:max_comments=40,all,0,0",
+        "-o", "scan_audio.%(ext)s",
+    ]
+    ok, err = _run_ytdlp_with_fallback(args, source_url, timeout_sec=75)
+    if not ok or not os.path.exists(audio_path):
+        args_fast = [
+            "-f", "bestaudio/worst",
+            "-x", "--audio-format", "mp3", "--audio-quality", "7",
+            "--write-info-json",
+            "-o", "scan_audio.%(ext)s",
+        ]
+        ok, err = _run_ytdlp_with_fallback(args_fast, source_url, timeout_sec=65)
+
+    if not ok or not os.path.exists(audio_path):
+        raise RuntimeError(f"Fast scan audio fetch failed: {err[-220:]}")
+
+    signals = _extract_signals_from_info("scan_audio*.info.json")
+    print(f"[MAG73 Fast Scan] Audio ready ({os.path.getsize(audio_path)//1024} KB).")
+    return None, audio_path, signals
 
 
 def fetch_media(source_url, mode="vod"):
@@ -113,7 +198,7 @@ def fetch_media(source_url, mode="vod"):
 
     if mode == "upload":
         _download_github_asset(source_url, out_path)
-        return out_path, {"chat_spikes": [], "comment_timestamps": [], "top_comments": []}
+        return out_path, {"chat_spikes": [], "heatmap_spikes": [], "comment_timestamps": [], "top_comments": []}
 
     if mode == "live":
         args = [
@@ -123,7 +208,7 @@ def fetch_media(source_url, mode="vod"):
             "--download-sections", "*0-45",
             "-o", out_path,
         ]
-        ok, err = _run_ytdlp_with_fallback(args, source_url, timeout_sec=75)
+        ok, err = _run_ytdlp_with_fallback(args, source_url, timeout_sec=70)
         if not ok or not os.path.exists(out_path):
             args_fb = [
                 "-f", "best[height<=720]/best",
@@ -131,37 +216,26 @@ def fetch_media(source_url, mode="vod"):
                 "--download-sections", "*0-35",
                 "-o", out_path,
             ]
-            ok, err = _run_ytdlp_with_fallback(args_fb, source_url, timeout_sec=75)
+            ok, err = _run_ytdlp_with_fallback(args_fb, source_url, timeout_sec=70)
         if not ok or not os.path.exists(out_path):
             raise RuntimeError(f"Live capture failed: {err[-220:]}")
-        return out_path, {"chat_spikes": [15], "comment_timestamps": [], "top_comments": []}
+        return out_path, {"chat_spikes": [15], "heatmap_spikes": [], "comment_timestamps": [], "top_comments": []}
 
-    args = [
-        "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]/best",
+    args_simple = [
+        "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
         "--merge-output-format", "mp4",
         "--write-info-json",
-        "--get-comments",
-        "--extractor-args", "youtube:max_comments=50,all,0,0",
         "-o", out_path,
     ]
-    ok, err = _run_ytdlp_with_fallback(args, source_url, timeout_sec=140)
-    if not ok or not os.path.exists(out_path):
-        args_simple = [
-            "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
-            "--merge-output-format", "mp4",
-            "-o", out_path,
-        ]
-        ok, err = _run_ytdlp_with_fallback(args_simple, source_url, timeout_sec=120)
-
+    ok, err = _run_ytdlp_with_fallback(args_simple, source_url, timeout_sec=110)
     if not ok or not os.path.exists(out_path):
         raise RuntimeError(f"Video download failed: {err[-220:]}")
 
-    signals = _extract_comment_signals("source_video.info.json")
+    signals = _extract_signals_from_info("source_video*.info.json")
     return out_path, signals
 
 
 def fetch_clip_segment(source_url, start_sec, end_sec, mode="vod"):
-    """Fast single-clip download with extra 2s tail for clean sentence-end snapping & strict 65s timeout."""
     mode = (mode or "vod").strip().lower()
     seg_path = "clip_segment.mp4"
     if os.path.exists(seg_path):
@@ -197,7 +271,6 @@ def fetch_clip_segment(source_url, start_sec, end_sec, mode="vod"):
         print(f"[MAG73 Input Engine] Fast segment ready: {section_arg}")
         return seg_path, pad_start
 
-    # Fast fallback without --force-keyframes-at-cuts (avoids ffmpeg re-encode stall)
     args_fast = [
         "-f", "best[height<=720]/best",
         "--merge-output-format", "mp4",
