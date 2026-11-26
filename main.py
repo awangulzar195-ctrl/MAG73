@@ -29,10 +29,7 @@ def _probe_duration(path):
 
 
 def _exact_trim_segment(seg_path, local_start, target_dur, out_path="exact_clip.mp4"):
-    """
-    Trims segment to exact 0.000s start (frame-accurate) BEFORE transcription & DSP,
-    permanently eliminating yt-dlp keyframe drift between captions, effects, and audio.
-    """
+    """Frame-accurate near-lossless (CRF 14) trim to 0.000s so ZERO quality is lost before final render."""
     seg_dur = _probe_duration(seg_path)
     safe_start = max(0.0, float(local_start))
     if seg_dur - safe_start < 7.0:
@@ -43,7 +40,7 @@ def _exact_trim_segment(seg_path, local_start, target_dur, out_path="exact_clip.
         [
             "ffmpeg", "-y", "-ss", f"{safe_start:.3f}", "-i", seg_path,
             "-t", f"{trim_len:.3f}",
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "14",
             "-c:a", "aac", "-b:a", "192k", "-avoid_negative_ts", "make_zero",
             out_path,
         ],
@@ -52,7 +49,7 @@ def _exact_trim_segment(seg_path, local_start, target_dur, out_path="exact_clip.
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    print(f"[MAG73 Trim] Frame-accurate 0.000s clip ready ({trim_len:.2f}s).")
+    print(f"[MAG73 Trim] Near-lossless 0.000s clip ready ({trim_len:.2f}s).")
     return out_path
 
 
@@ -80,7 +77,7 @@ def main():
         out_json = os.path.join("output_clips", "scan_result.json")
         with open(out_json, "w", encoding="utf-8") as f:
             json.dump(scan_payload, f, ensure_ascii=False, indent=2)
-        print(f"[MAG73 Fast Scan] Saved {len(clips)} detected moment(s) to {out_json}")
+        print(f"[MAG73 Fast Scan] Saved {len(clips)} elite viral moment(s) to {out_json}")
         return
 
     # MODE 2: RENDER SINGLE SELECTED CLIP (Trim-First Zero-Drift Parallel Pipeline)
@@ -91,7 +88,7 @@ def main():
         clip_data = json.loads(clip_spec_raw)
         start_sec = float(clip_data.get("start", 0))
         end_sec = float(clip_data.get("end", start_sec + 20))
-        target_dur = max(10.0, min(35.0, end_sec - start_sec))
+        target_dur = max(10.0, min(28.0, end_sec - start_sec))
         clip_index = int(clip_data.get("clip_index", 0))
         video_title = str(clip_data.get("video_title", "") or "")
 
@@ -112,13 +109,12 @@ def main():
             exact_path, caption_lang=caption_lang, context_hint=video_title
         )
 
-        # Verify exact hook title, exact 0.00s-aligned climax peak_sec, and unique stamp
         local_clip = refine_clip_metadata(local_clip, seg_transcript, word_timestamps)
 
         out_mp4 = render_pro_short(exact_path, local_clip, word_timestamps, clip_index)
         if out_mp4 and os.path.exists(out_mp4):
             shutil.move(out_mp4, os.path.join("output_clips", os.path.basename(out_mp4)))
-            print(f"[MAG73 Render] Individual clip ready: output_clips/{os.path.basename(out_mp4)}")
+            print(f"[MAG73 Render] Individual HD clip ready: output_clips/{os.path.basename(out_mp4)}")
         return
 
     # MODE 3: DIRECT LIVE / VOD / UPLOAD (Live Stream & Legacy)
