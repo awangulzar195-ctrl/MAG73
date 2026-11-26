@@ -13,7 +13,7 @@ on:
         default: 'vod'
         type: string
       edit_style:
-        description: 'Editing Vibe: auto, vlog, gaming, funny, aura, drama, clash, clean'
+        description: 'Editing Vibe: auto, roast, aura, aesthetic, vlog, gaming, funny, drama, clash, clean'
         required: false
         default: 'auto'
         type: string
@@ -58,7 +58,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yt-dlp requests google-genai opencv-python-headless numpy
+          pip install yt-dlp requests google-genai opencv-python-headless numpy faster-whisper
 
       - name: Load YouTube Cookies
         env:
