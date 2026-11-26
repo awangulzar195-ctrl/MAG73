@@ -20,19 +20,21 @@ PRO_FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/f
 
 # ASS BGR hex (&H00BBGGRR&), FFmpeg hex (0xRRGGBB)
 STYLE_PALETTE = {
-    "vlog":        {"hl": "&H0000D7FF&", "pop": "&H004ADE80&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H0000D7FF&", "hook_bg": "&H22101520&", "pbar": "0xF59E0B", "border": "0xF59E0B"},
-    "informative": {"hl": "&H00F8BD38&", "pop": "&H0000E5FF&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H00F8BD38&", "hook_bg": "&H220B1524&", "pbar": "0x38BDF8", "border": "0x38BDF8"},
-    "gaming":      {"hl": "&H0080DE4A&", "pop": "&H0015CCFA&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H0080DE4A&", "hook_bg": "&H220A1812&", "pbar": "0x4ADE80", "border": "0x4ADE80"},
-    "clash":       {"hl": "&H00EED322&", "pop": "&H005555FF&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H00EED322&", "hook_bg": "&H220E1728&", "pbar": "0x22D3EE", "border": "0x22D3EE"},
-    "funny":       {"hl": "&H0015CCFA&", "pop": "&H0080DE4A&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H0015CCFA&", "hook_bg": "&H221C1406&", "pbar": "0xFACC15", "border": "0xFACC15"},
-    "aura":        {"hl": "&H005555FF&", "pop": "&H0000D7FF&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H007171F8&", "hook_bg": "&H2218080A&", "pbar": "0xEF4444", "border": "0xEF4444"},
-    "drama":       {"hl": "&H003C92FB&", "pop": "&H0015CCFA&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H003C92FB&", "hook_bg": "&H221C0D08&", "pbar": "0xF97316", "border": "0xF97316"},
-    "clean":       {"hl": "&H00FFE500&", "pop": "&H0000D7FF&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H00FFFFFF&", "hook_bg": "&H220F1115&", "pbar": "0x6366F1", "border": "0x6366F1"},
+    "roast":       {"hl": "&H0015CCFA&", "pop": "&H004444FF&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H0015CCFA&", "ribbon": "0x99111B@0.76", "pbar": "0xEF4444", "border": "0xEF4444", "stamp": "ROASTED"},
+    "aura":        {"hl": "&H005555FF&", "pop": "&H0015CCFA&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H0015CCFA&", "ribbon": "0x11131C@0.82", "pbar": "0xEF4444", "border": "0xEF4444", "stamp": "AURA +1000"},
+    "aesthetic":   {"hl": "&H0015CCFA&", "pop": "&H00FFFFFF&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H0015CCFA&", "ribbon": "0x0B0F17@0.68", "pbar": "0xFACC15", "border": "0xFACC15", "stamp": ""},
+    "vlog":        {"hl": "&H0000D7FF&", "pop": "&H0080DE4A&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H0000D7FF&", "ribbon": "0x141824@0.80", "pbar": "0xF59E0B", "border": "0xF59E0B", "stamp": ""},
+    "informative": {"hl": "&H00F8BD38&", "pop": "&H0000E5FF&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H00F8BD38&", "ribbon": "0x0B1524@0.82", "pbar": "0x38BDF8", "border": "0x38BDF8", "stamp": ""},
+    "gaming":      {"hl": "&H0080DE4A&", "pop": "&H0015CCFA&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H0080DE4A&", "ribbon": "0x0A1812@0.82", "pbar": "0x4ADE80", "border": "0x4ADE80", "stamp": "INSANE"},
+    "clash":       {"hl": "&H00EED322&", "pop": "&H005555FF&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H00EED322&", "ribbon": "0x7F1D1D@0.76", "pbar": "0x22D3EE", "border": "0x22D3EE", "stamp": "COOKED"},
+    "funny":       {"hl": "&H0015CCFA&", "pop": "&H0080DE4A&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H0015CCFA&", "ribbon": "0x1E1506@0.82", "pbar": "0xFACC15", "border": "0xFACC15", "stamp": "WAIT WHAT"},
+    "drama":       {"hl": "&H003C92FB&", "pop": "&H0015CCFA&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H003C92FB&", "ribbon": "0x7C1D12@0.78", "pbar": "0xF97316", "border": "0xF97316", "stamp": ""},
+    "clean":       {"hl": "&H00FFE500&", "pop": "&H0000D7FF&", "hook_txt": "&H00FFFFFF&", "hook_acc": "&H00FFFFFF&", "ribbon": "0x0F1115@0.75", "pbar": "0x6366F1", "border": "0x6366F1", "stamp": ""},
 }
 
 HYPE_WORDS = {
-    "SIX", "FOUR", "OUT", "W", "OMG", "WTF", "BRO", "BHAI", "RECORD", "CLUTCH",
-    "INSANE", "CRAZY", "NO", "BOOM", "DEAD", "WIN", "100", "200", "175", "50", "1000",
+    "SIX", "FOUR", "OUT", "OMG", "WTF", "BRO", "BHAI", "ROAST", "CLUTCH",
+    "INSANE", "CRAZY", "BOOM", "DEAD", "WIN", "AURA", "LEGEND", "COLD", "100", "200",
 }
 
 
@@ -128,11 +130,7 @@ def _probe_video_info(video_path):
 
 
 def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
-    """
-    PRO OPENCV SHOT-BY-SHOT FACE AUTO-REFRAMER:
-    Detects every camera cut + detects speaker faces in each shot,
-    then generates an FFmpeg per-frame crop x-expression that snaps cleanly onto the active speaker on every cut!
-    """
+    """OpenCV shot-by-shot speaker face auto-reframer."""
     fallback_x = "0.18*(iw-ow)" if focus_x == "left" else ("0.82*(iw-ow)" if focus_x == "right" else "(iw-ow)/2")
     if not HAS_CV2:
         return fallback_x
@@ -175,7 +173,6 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
             faces = face_cascade.detectMultiScale(gray, scaleFactor=1.18, minNeighbors=5, minSize=(36, 36))
             face_x = None
             if len(faces) > 0:
-                # Focus on the largest/closest speaker face
                 best = max(faces, key=lambda b: b[2] * b[3])
                 face_x = (best[0] + best[2] * 0.5) / 480.0
 
@@ -187,7 +184,6 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
         if len(samples) < 3:
             return fallback_x
 
-        # Group frames into continuous camera shots
         shots = []
         curr = [samples[0]]
         for s in samples[1:]:
@@ -199,7 +195,6 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
         if curr:
             shots.append(curr)
 
-        # Compute clean median face center per shot (keep max 14 shots)
         shot_targets = []
         for sh in shots[:14]:
             fxs = sorted([x["fx"] for x in sh if x["fx"] is not None])
@@ -210,7 +205,6 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
         if not shot_targets:
             return fallback_x
 
-        # Merge consecutive shots with almost identical framing
         merged = [shot_targets[0]]
         for st, en, cx in shot_targets[1:]:
             pst, pen, pcx = merged[-1]
@@ -219,7 +213,6 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
             else:
                 merged.append((st, en, cx))
 
-        # Build compact nested FFmpeg piecewise expression: clip(cx*iw - ow/2, 0, iw - ow)
         expr = f"clip({merged[-1][2]:.3f}*iw-ow/2,0,iw-ow)"
         for st, en, cx in reversed(merged[:-1]):
             expr = f"if(lt(t,{en:.2f}),clip({cx:.3f}*iw-ow/2,0,iw-ow),{expr})"
@@ -232,13 +225,11 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
 
 
 def _snap_clean_duration(start, duration, max_file_dur, words):
-    """Prevents cutting off a speaker mid-sentence by snapping end to a natural word/pause boundary."""
-    avail_max = max(8.0, min(36.0, max_file_dur - start - 0.1))
+    avail_max = max(8.0, min(38.0, max_file_dur - start - 0.1))
     target_end = start + duration
     if not words:
         return min(duration, avail_max)
 
-    # Look for a sentence ending or pause near target_end [-1.5s, +1.8s]
     best_end = None
     for i, w in enumerate(words):
         we = float(w.get("end", 0))
@@ -258,7 +249,7 @@ def _snap_clean_duration(start, duration, max_file_dur, words):
 
 
 def _analyze_audio_profile(video_path, start, duration):
-    fallback_peak = max(2.5, duration * 0.45)
+    fallback_peak = max(3.0, duration * 0.52)
     try:
         raw = subprocess.check_output(
             [
@@ -286,8 +277,9 @@ def _analyze_audio_profile(video_path, start, duration):
         p25_floor = sorted_rms[len(sorted_rms) // 4]
         has_existing_bgm = p25_floor > 0.042
 
-        lo = min(len(rms_list) - 1, max(1, int(2.5 / 0.25)))
-        hi = max(lo + 1, min(len(rms_list), int((duration - 2.0) / 0.25)))
+        # Peak climax between 35% and 82% of clip so setup builds properly before the drop!
+        lo = min(len(rms_list) - 1, max(2, int((duration * 0.35) / 0.25)))
+        hi = max(lo + 1, min(len(rms_list), int((duration * 0.82) / 0.25)))
         peak_idx = lo
         peak_val = -1.0
         for idx in range(lo, hi):
@@ -296,7 +288,7 @@ def _analyze_audio_profile(video_path, start, duration):
                 peak_idx = idx
 
         real_peak_sec = round(peak_idx * 0.25, 2)
-        print(f"[MAG73 DSP] Real audio peak={real_peak_sec:.2f}s | ExistingBGM={has_existing_bgm}")
+        print(f"[MAG73 DSP] Climax peak={real_peak_sec:.2f}s | ExistingBGM={has_existing_bgm}")
         return real_peak_sec, has_existing_bgm
     except Exception as e:
         print(f"[MAG73 DSP] Audio profile fallback: {e}")
@@ -326,7 +318,6 @@ def _fetch_audio(query, out_prefix):
     try:
         subprocess.run(cmd, check=False, timeout=35, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
-        print(f"[MAG73 Audio] Timed out fetching '{query}', skipping.")
         return None
     if os.path.exists(out_file) and os.path.getsize(out_file) > 10000:
         return out_file
@@ -356,12 +347,12 @@ def _generate_whoosh_sfx(out_path):
 
 def _generate_synth_sfx(out_path, edit_type):
     try:
-        if edit_type == "funny":
-            expr = "sin(2*PI*(200*exp(-7*t)+55)*t)*exp(-5.0*t)*0.75"
-            dur = "0.45"
+        if edit_type in ("funny", "roast"):
+            expr = "sin(2*PI*(195*exp(-6.5*t)+46)*t)*exp(-4.2*t)*0.85"
+            dur = "0.55"
         else:
-            expr = "sin(2*PI*(110*exp(-3.2*t)+36)*t)*exp(-2.8*t)*0.82"
-            dur = "0.78"
+            expr = "sin(2*PI*(110*exp(-3.0*t)+34)*t)*exp(-2.4*t)*0.90"
+            dur = "0.85"
         subprocess.run(
             [
                 "ffmpeg", "-y", "-f", "lavfi",
@@ -398,20 +389,34 @@ def _clean_text(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
-def generate_pro_ass(words, clip_start, clip_end, font_name, edit_type, is_wide_blur, title_text, ass_path, captions_on=True):
+def _format_two_line_hook(title_text, acc_col):
+    """Formats viral 2-line hook (Line 1 White/Yellow, Line 2 Glowing Accent) just like top Reels."""
+    words = title_text.split()
+    if len(words) <= 2:
+        return f"{{\\c{acc_col}}}{title_text}"
+    mid = max(1, len(words) // 2)
+    l1 = " ".join(words[:mid])
+    l2 = " ".join(words[mid:])
+    return f"{l1}\\N{{\\c{acc_col}}}{l2}"
+
+
+def generate_pro_ass(words, clip_start, clip_end, font_name, edit_type, is_wide_blur, title_text, peak_sec, ass_path, captions_on=True):
     """
-    Two-tone Viral Hook Banner + Zero-Overlap Hormozi/CapCut Pop Captions with automatic hype/number accenting.
+    Viral Reels ASS Engine:
+    - Roast/Aura/Aesthetic: Full-width Translucent Ribbon + Bold 2-line Hook + Climax Impact Stamp ("ROASTED" / "AURA +1000")!
+    - All styles: Zero-overlap Hormozi/CapCut word-by-word pop captions!
     """
     pal = STYLE_PALETTE.get(edit_type, STYLE_PALETTE["vlog"])
     hl_color = pal["hl"]
     pop_color = pal["pop"]
     hook_txt_col = pal["hook_txt"]
     hook_acc_col = pal["hook_acc"]
-    hook_bg_col = pal["hook_bg"]
 
-    cap_margin_v = 360 if is_wide_blur else 420
-    hook_margin_v = 260 if is_wide_blur else 175
-    cap_font_size = 86 if edit_type in ("funny", "gaming", "aura") else 80
+    is_ribbon_style = edit_type in ("roast", "aura", "aesthetic", "clash")
+    cap_margin_v = 330 if is_wide_blur else (320 if is_ribbon_style else 400)
+    hook_margin_v = 250 if is_wide_blur else (210 if not is_ribbon_style else 540)
+    hook_align = 2 if (is_ribbon_style and not is_wide_blur) else 8
+    cap_font_size = 84 if edit_type in ("funny", "gaming", "aura", "roast") else 78
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -422,32 +427,37 @@ WrapStyle: 2
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,{font_name},{cap_font_size},&H00FFFFFF,{hl_color},&H00000000,&HC0000000,-1,0,0,0,100,100,1,0,1,10,5,2,60,60,{cap_margin_v},1
-Style: Hook,{font_name},56,{hook_txt_col},&H00FFFFFF,{hook_bg_col},&HAA000000,-1,0,0,0,100,100,2,0,3,20,0,8,65,65,{hook_margin_v},1
+Style: Hook,{font_name},62,{hook_txt_col},&H00FFFFFF,&H00000000,&HAA000000,-1,0,0,0,100,100,2,0,1,6,4,{hook_align},65,65,{hook_margin_v},1
+Style: Stamp,{font_name},94,{hook_acc_col},&H00FFFFFF,&H00000000,&HCC000000,-1,0,0,0,100,100,3,0,1,12,6,5,40,40,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = []
+    hook_end = min(clip_end - clip_start, max(3.6, peak_sec - 0.15)) if is_ribbon_style else 3.40
 
-    # Two-tone spring-bounce Viral Hook Banner (highlights last 1-2 words in accent color!)
+    # 1. Viral 2-Line Spring-Bounce Hook Text
     if title_text and edit_type != "clean":
-        t_words = title_text.split()
-        if len(t_words) >= 3:
-            split_at = len(t_words) - 2
-            styled_hook = (
-                " ".join(t_words[:split_at])
-                + f" {{\\c{hook_acc_col}}}"
-                + " ".join(t_words[split_at:])
-            )
-        else:
-            styled_hook = f"{{\\c{hook_acc_col}}}{title_text}"
-
+        styled_hook = _format_two_line_hook(title_text, hook_acc_col)
         anim_hook = (
-            r"{\fad(90,260)\fscx70\fscy70\t(0,130,\fscx108\fscy108)\t(130,220,\fscx100\fscy100)}"
+            r"{\fad(100,260)\fscx74\fscy74\t(0,130,\fscx107\fscy107)\t(130,220,\fscx100\fscy100)}"
             + styled_hook
         )
-        lines.append(f"Dialogue: 1,{_format_ass_time(0.08)},{_format_ass_time(3.30)},Hook,,0,0,0,,{anim_hook}")
+        lines.append(f"Dialogue: 2,{_format_ass_time(0.08)},{_format_ass_time(hook_end)},Hook,,0,0,0,,{anim_hook}")
 
+    # 2. Climax Impact Stamp right at peak_sec for Roast / Aura / Gaming / Clash
+    stamp_txt = pal.get("stamp", "")
+    if stamp_txt and edit_type in ("roast", "aura", "clash", "gaming"):
+        st_s = peak_sec + 0.05
+        st_e = min(clip_end - clip_start - 0.2, st_s + 1.35)
+        if st_e > st_s + 0.4:
+            anim_stamp = (
+                r"{\fad(40,260)\fscx160\fscy160\t(0,110,\fscx100\fscy100)}"
+                + stamp_txt
+            )
+            lines.append(f"Dialogue: 3,{_format_ass_time(st_s)},{_format_ass_time(st_e)},Stamp,,0,0,0,,{anim_stamp}")
+
+    # 3. Zero-Overlap CapCut/Hormozi Word-by-Word Pop Captions
     if captions_on and words:
         raw_clip_words = []
         for w in words:
@@ -529,18 +539,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         print(f"[MAG73 Captions] Generated {len(flat_events)} zero-overlap animated events.")
 
     if not lines:
-        return None
+        return None, hook_end
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write(header + "\n".join(lines))
-    return ass_path
+    return ass_path, hook_end
 
 
 def _build_layout_and_motion(video_path, start, in_w, in_h, focus_x, duration, edit_type, peak_sec, layout_mode):
-    """
-    3x FASTER + 1000x PRO VISUAL PIPELINE:
-    - Vertical Full: OpenCV Shot-by-Shot Face Auto-Reframing + Fast 720x1280 Smooth Zoompan -> Crisp 1080x1920 Lanczos!
-    - Wide Blur (Gaming/Graphics): Bright vibrant blurred backdrop (NO black bars!) + enlarged crisp gameplay frame.
-    """
     dur_frames = max(30, int(duration * 30))
     pk = float(peak_sec)
     is_landscape = (in_w > in_h)
@@ -555,35 +560,34 @@ def _build_layout_and_motion(video_path, start, in_w, in_h, focus_x, duration, e
     pal = STYLE_PALETTE.get(edit_type, STYLE_PALETTE["vlog"])
 
     peak_bell = f"max(0,1-abs(on/30-{pk:.2f})/0.85)"
-    shake_win = f"between(on/30,{pk:.2f},{pk+0.36:.2f})"
+    shake_win = f"between(on/30,{pk:.2f},{pk+0.42:.2f})"
 
-    if edit_type == "funny":
-        z_expr = f"1.01+0.13*max(0,1-on/12)+0.04*min(1,on/{dur_frames})+0.18*{peak_bell}"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+10*sin(on*3.2)*{shake_win},0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+10*cos(on*3.6)*{shake_win},0,ih-ih/zoom)"
-    elif edit_type == "aura":
-        z_expr = f"1.02+0.14*max(0,1-on/12)+0.08*min(1,on/{dur_frames})+0.18*{peak_bell}"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+14*sin(on*3.0)*{shake_win},0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+14*cos(on*3.5)*{shake_win},0,ih-ih/zoom)"
-    elif edit_type in ("gaming", "clash"):
-        z_expr = f"1.01+0.12*max(0,1-on/12)+0.05*min(1,on/{dur_frames})+0.15*{peak_bell}"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+11*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+11*cos(on*3.5)*{shake_win},0,ih-ih/zoom)"
-    elif edit_type == "drama":
-        z_expr = f"1.01+0.10*max(0,1-on/14)+0.10*min(1,on/{dur_frames})+0.12*{peak_bell}"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+8*sin(on*2.9)*{shake_win},0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+8*cos(on*3.3)*{shake_win},0,ih-ih/zoom)"
-    elif edit_type in ("vlog", "informative"):
-        z_expr = f"1.01+0.12*max(0,1-on/14)+0.06*min(1,on/{dur_frames})+0.09*{peak_bell}"
+    if edit_type in ("roast", "aura"):
+        z_expr = f"1.02+0.15*max(0,1-on/12)+0.08*min(1,on/{dur_frames})+0.22*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+18*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+18*cos(on*3.6)*{shake_win},0,ih-ih/zoom)"
+    elif edit_type == "aesthetic":
+        z_expr = f"1.02+0.10*max(0,1-on/16)+0.10*min(1,on/{dur_frames})+0.10*{peak_bell}"
         x_expr = "iw/2-(iw/zoom/2)"
         y_expr = "ih/2-(ih/zoom/2)"
+    elif edit_type == "funny":
+        z_expr = f"1.01+0.13*max(0,1-on/12)+0.04*min(1,on/{dur_frames})+0.18*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+12*sin(on*3.2)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+12*cos(on*3.6)*{shake_win},0,ih-ih/zoom)"
+    elif edit_type in ("gaming", "clash"):
+        z_expr = f"1.01+0.12*max(0,1-on/12)+0.05*min(1,on/{dur_frames})+0.16*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+13*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+13*cos(on*3.5)*{shake_win},0,ih-ih/zoom)"
+    elif edit_type == "drama":
+        z_expr = f"1.01+0.10*max(0,1-on/14)+0.10*min(1,on/{dur_frames})+0.12*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+9*sin(on*2.9)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+9*cos(on*3.3)*{shake_win},0,ih-ih/zoom)"
     else:
-        z_expr = f"1.00+0.05*min(1,on/{dur_frames})"
+        z_expr = f"1.01+0.11*max(0,1-on/14)+0.06*min(1,on/{dur_frames})+0.08*{peak_bell}"
         x_expr = "iw/2-(iw/zoom/2)"
         y_expr = "ih/2-(ih/zoom/2)"
 
     if is_wide_blur:
-        # Bright stylish blurred backdrop + fast 720x520 zoompan upscaled cleanly to 1080x780
         graph = (
             f"[0:v]fps=30,split=2[bg_src][fg_src];"
             f"[bg_src]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
@@ -595,7 +599,6 @@ def _build_layout_and_motion(video_path, start, in_w, in_h, focus_x, duration, e
         )
     else:
         face_crop_x = _build_smart_face_crop_expr(video_path, start, duration, focus_x)
-        # Fast 720x1280 face-tracked crop + zoompan -> crisp Lanczos 1080x1920 upscale (2.5x faster!)
         graph = (
             f"[0:v]fps=30,scale=720:1280:force_original_aspect_ratio=increase,"
             f"crop=720:1280:x='{face_crop_x}':y='(ih-1280)/2',"
@@ -620,7 +623,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
 
     start = max(0.0, float(clip_data.get("start", 0)))
     end = float(clip_data.get("end", start + 18))
-    raw_duration = max(8.0, min(35.0, end - start))
+    raw_duration = max(8.0, min(36.0, end - start))
     duration = _snap_clean_duration(start, raw_duration, max_file_dur, word_timestamps)
 
     orig_start = int(float(clip_data.get("orig_start", start)))
@@ -645,7 +648,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     whoosh_file = _generate_whoosh_sfx(f"whoosh_{index}.mp3") if (sfx_enabled and edit_type != "clean") else None
 
     sfx_file = None
-    if sfx_enabled and edit_type in ("aura", "funny", "gaming", "clash", "drama"):
+    if sfx_enabled and edit_type in ("roast", "aura", "aesthetic", "funny", "gaming", "clash", "drama"):
         sfx_file = _fetch_audio(clip_data.get("sfx_query", ""), f"sfx_{index}")
         if not sfx_file:
             sfx_file = _generate_synth_sfx(f"synth_sfx_{index}.mp3", edit_type)
@@ -654,7 +657,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         video_path, start, in_w, in_h, focus_x, duration, edit_type, peak_sec, layout_mode
     )
 
-    ass_file = generate_pro_ass(
+    ass_file, hook_end = generate_pro_ass(
         word_timestamps,
         start,
         start + duration,
@@ -662,52 +665,78 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         edit_type,
         is_wide_blur,
         title_text,
+        peak_sec,
         f"cap_{index}.ass",
         captions_on=(caption_lang != "off"),
     )
 
-    # Cinema-grade color + subtle vignette + sharp crispness + impact flash
-    if edit_type == "vlog":
+    pal = STYLE_PALETTE.get(edit_type, STYLE_PALETTE["vlog"])
+
+    # Viral HDR CC + Climax Drop Effects (matching your reference Reels!)
+    if edit_type == "roast":
         post_vf = [
-            "eq=contrast=1.09:saturation=1.22:brightness=0.02",
-            "colorbalance=rs=0.04:gs=0.01:bs=-0.03",
-            "unsharp=5:5:0.45:5:5:0.0",
+            "eq=contrast=1.18:saturation=1.16:brightness=-0.01",
+            "unsharp=5:5:0.75:5:5:0.0",
+            "vignette=PI/6",
+            f"eq=brightness=0.40:enable='between(t,{peak_sec:.2f},{peak_sec+0.11:.2f})'",
+            f"eq=contrast=1.28:saturation=0.55:brightness=-0.03:enable='gte(t,{peak_sec+0.11:.2f})'",
         ]
-    elif edit_type == "informative":
+    elif edit_type == "aura":
         post_vf = [
-            "eq=contrast=1.08:saturation=1.12:brightness=0.01",
+            "eq=contrast=1.18:saturation=0.88:brightness=-0.02",
+            "unsharp=5:5:0.75:5:5:0.0",
+            "vignette=PI/5",
+            f"eq=brightness=0.44:enable='between(t,{peak_sec:.2f},{peak_sec+0.12:.2f})'",
+            f"hue=s=0:enable='gte(t,{peak_sec+0.12:.2f})'",
+            f"eq=contrast=1.30:brightness=-0.04:enable='gte(t,{peak_sec+0.12:.2f})'",
+        ]
+    elif edit_type == "aesthetic":
+        post_vf = [
+            "eq=contrast=1.16:saturation=0.92:brightness=-0.02",
+            "colorbalance=rs=0.03:gs=0.00:bs=0.05",
+            "unsharp=5:5:0.65:5:5:0.0",
+            "vignette=PI/5",
+            f"eq=brightness=0.22:enable='between(t,{peak_sec:.2f},{peak_sec+0.10:.2f})'",
+        ]
+    elif edit_type == "vlog":
+        post_vf = [
+            "eq=contrast=1.10:saturation=1.22:brightness=0.02",
+            "colorbalance=rs=0.04:gs=0.01:bs=-0.03",
             "unsharp=5:5:0.50:5:5:0.0",
         ]
     elif edit_type == "funny":
         post_vf = [
-            "eq=contrast=1.10:saturation=1.20:brightness=0.02",
-            "unsharp=5:5:0.45:5:5:0.0",
-            f"eq=brightness=0.22:enable='between(t,{peak_sec:.2f},{peak_sec+0.09:.2f})'",
+            "eq=contrast=1.12:saturation=1.22:brightness=0.02",
+            "unsharp=5:5:0.55:5:5:0.0",
+            f"eq=brightness=0.24:enable='between(t,{peak_sec:.2f},{peak_sec+0.09:.2f})'",
         ]
     elif edit_type in ("gaming", "clash"):
         post_vf = [
-            "eq=contrast=1.14:saturation=1.20",
-            "unsharp=5:5:0.55:5:5:0.0",
-            f"eq=brightness=0.24:enable='between(t,{peak_sec:.2f},{peak_sec+0.10:.2f})'",
-        ]
-    elif edit_type == "aura":
-        post_vf = [
-            "eq=contrast=1.14:saturation=0.88:brightness=-0.02",
-            "vignette=PI/6",
-            "unsharp=5:5:0.45:5:5:0.0",
-            f"eq=brightness=0.35:enable='between(t,{peak_sec:.2f},{peak_sec+0.11:.2f})'",
-            f"hue=s=0:enable='gte(t,{peak_sec+0.11:.2f})'",
-            f"eq=contrast=1.24:brightness=-0.03:enable='gte(t,{peak_sec+0.11:.2f})'",
+            "eq=contrast=1.16:saturation=1.22",
+            "unsharp=5:5:0.65:5:5:0.0",
+            f"eq=brightness=0.28:enable='between(t,{peak_sec:.2f},{peak_sec+0.10:.2f})'",
         ]
     elif edit_type == "drama":
         post_vf = [
-            "eq=contrast=1.12:saturation=0.96:brightness=-0.01",
+            "eq=contrast=1.14:saturation=0.95:brightness=-0.01",
             "vignette=PI/6",
-            "unsharp=5:5:0.45:5:5:0.0",
-            f"eq=brightness=0.20:enable='between(t,{peak_sec:.2f},{peak_sec+0.09:.2f})'",
+            "unsharp=5:5:0.55:5:5:0.0",
+            f"eq=brightness=0.22:enable='between(t,{peak_sec:.2f},{peak_sec+0.09:.2f})'",
         ]
     else:
-        post_vf = ["eq=contrast=1.05:saturation=1.06", "unsharp=5:5:0.35:5:5:0.0"]
+        post_vf = ["eq=contrast=1.06:saturation=1.08", "unsharp=5:5:0.40:5:5:0.0"]
+
+    # Viral Full-Width Translucent Ribbon behind Hook Text (exact reference style!)
+    if title_text and edit_type != "clean":
+        is_ribbon_style = edit_type in ("roast", "aura", "aesthetic", "clash")
+        if is_ribbon_style and not is_wide_blur:
+            post_vf.append(
+                f"drawbox=x=0:y=1210:w=iw:h=190:color={pal['ribbon']}:t=fill:enable='between(t,0.08,{hook_end:.2f})'"
+            )
+        elif not is_wide_blur:
+            post_vf.append(
+                f"drawbox=x=0:y=155:w=iw:h=175:color={pal['ribbon']}:t=fill:enable='between(t,0.08,{hook_end:.2f})'"
+            )
 
     if custom_ffmpeg and ";" not in custom_ffmpeg and "[" not in custom_ffmpeg:
         post_vf.append(custom_ffmpeg)
@@ -715,7 +744,6 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     if ass_file and os.path.exists(ass_file):
         post_vf.append(f"ass={ass_file}:fontsdir=.")
 
-    pal = STYLE_PALETTE.get(edit_type, STYLE_PALETTE["vlog"])
     video_chain = (
         f"{layout_graph}"
         f"[base]{','.join(post_vf)}[v_graded];"
@@ -725,7 +753,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
 
     cmd = ["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", video_path]
 
-    bgm_vol = "0.18" if edit_type in ("aura", "gaming", "clash") else "0.13"
+    bgm_vol = "0.20" if edit_type in ("roast", "aura", "aesthetic", "gaming", "clash") else "0.14"
     fade_out_start = max(0.5, duration - 1.2)
 
     audio_mix_labels = ["[voice]"]
@@ -766,7 +794,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         sfx_ms = int(peak_sec * 1000)
         audio_chains.append(
             f"[{next_in}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
-            f"atrim=0:1.0,afade=t=out:st=0.65:d=0.35,adelay={sfx_ms}|{sfx_ms},volume=0.38[sfx];"
+            f"atrim=0:1.0,afade=t=out:st=0.65:d=0.35,adelay={sfx_ms}|{sfx_ms},volume=0.40[sfx];"
         )
         audio_mix_labels.append("[sfx]")
         next_in += 1
