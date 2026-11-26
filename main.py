@@ -1,8 +1,9 @@
 import os
 import json
 import shutil
-from input_engine import fetch_media, fetch_clip_segment
+from input_engine import fetch_media, fetch_scan_media, fetch_clip_segment
 from ai_council import (
+    run_fast_scan_council,
     run_super_ai_council,
     extract_accurate_transcript,
     refine_clip_hook,
@@ -22,13 +23,10 @@ def main():
     os.makedirs("output_clips", exist_ok=True)
     is_upload_asset = "api.github.com/repos/" in source_url and "/releases/assets/" in source_url
 
-    # =========================================================
-    # MODE 1: SCAN ONLY (Find all high-hype moments for app UI)
-    # =========================================================
+    # MODE 1: ULTRA-FAST SCAN (Audio + YouTube Heatmap + Comments)
     if mode == "scan":
-        fetch_mode = "upload" if is_upload_asset else "vod"
-        video_path, audience_signals = fetch_media(source_url, mode=fetch_mode)
-        clips, _ = run_super_ai_council(video_path, audience_signals)
+        video_path, audio_path, audience_signals = fetch_scan_media(source_url, is_upload=is_upload_asset)
+        clips = run_fast_scan_council(audio_path, audience_signals, video_path=video_path)
 
         scan_payload = {
             "source_url": source_url,
@@ -38,12 +36,10 @@ def main():
         out_json = os.path.join("output_clips", "scan_result.json")
         with open(out_json, "w", encoding="utf-8") as f:
             json.dump(scan_payload, f, ensure_ascii=False, indent=2)
-        print(f"[MAG73 Scan] Saved {len(clips)} detected moment(s) to {out_json}")
+        print(f"[MAG73 Fast Scan] Saved {len(clips)} detected moment(s) to {out_json}")
         return
 
-    # =========================================================
     # MODE 2: RENDER SINGLE SELECTED CLIP (Parallel Individual)
-    # =========================================================
     if mode == "render_clip":
         if not clip_spec_raw:
             raise RuntimeError("CLIP_SPEC JSON is missing for render_clip mode!")
@@ -65,7 +61,7 @@ def main():
         caption_lang = str(plugin_cfg.get("caption_lang", "hinglish")).lower()
         seg_transcript, word_timestamps, _ = extract_accurate_transcript(seg_path, caption_lang=caption_lang)
 
-        # Verify hook title strictly matches this exact cut's spoken content
+        # Verify exact hook title & edit style from THIS segment's real spoken words
         local_clip = refine_clip_hook(local_clip, seg_transcript)
 
         out_mp4 = render_pro_short(seg_path, local_clip, word_timestamps, clip_index)
@@ -74,9 +70,7 @@ def main():
             print(f"[MAG73 Render] Individual clip ready: output_clips/{os.path.basename(out_mp4)}")
         return
 
-    # =========================================================
-    # MODE 3: DIRECT LIVE / VOD / UPLOAD (Legacy & Live Stream)
-    # =========================================================
+    # MODE 3: DIRECT LIVE / VOD / UPLOAD (Live Stream & Legacy)
     video_path, audience_signals = fetch_media(source_url, mode=mode)
     clips, word_timestamps = run_super_ai_council(video_path, audience_signals)
 
