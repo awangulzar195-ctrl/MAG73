@@ -13,7 +13,7 @@ on:
         default: 'vod'
         type: string
       edit_style:
-        description: 'Editing Vibe: auto, aura, funny, drama, clash, clean'
+        description: 'Editing Vibe: auto, vlog, gaming, funny, aura, drama, clash, clean'
         required: false
         default: 'auto'
         type: string
@@ -39,6 +39,7 @@ permissions:
 jobs:
   clip-and-edit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout MAG73 Repository
@@ -57,7 +58,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yt-dlp requests google-genai
+          pip install yt-dlp requests google-genai opencv-python-headless numpy
 
       - name: Load YouTube Cookies
         env:
