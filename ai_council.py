@@ -4,7 +4,6 @@ import json
 import re
 import random
 import subprocess
-import concurrent.futures
 import requests
 from google import genai
 
@@ -30,18 +29,73 @@ _working_groq_model = None
 _local_whisper_model = None
 
 VALID_STYLES = ("roast", "aura", "aesthetic", "vlog", "gaming", "funny", "drama", "clash", "informative", "clean")
+CAPTION_STYLES = ("hormozi_pop", "boxed_pill", "neon_glow", "word_slam", "editorial_italic")
 
-DEFAULT_BGM_BY_STYLE = {
-    "roast": "ytsearch1:dark brazilian phonk sigma edit instrumental no copyright",
-    "aura": "ytsearch1:dark phonk aura edit slowed instrumental no copyright",
-    "aesthetic": "ytsearch1:moody aesthetic dark ambient motivation beat no copyright",
-    "vlog": "ytsearch1:chill aesthetic travel vlog beat instrumental no copyright",
-    "informative": "ytsearch1:clean modern documentary background beat no copyright",
-    "gaming": "ytsearch1:energetic gaming phonk montage instrumental no copyright",
-    "clash": "ytsearch1:intense dark trap hype beat instrumental no copyright",
-    "funny": "ytsearch1:upbeat comedy quirky background music instrumental no copyright",
-    "drama": "ytsearch1:cinematic suspense tension dark background music no copyright",
-    "clean": "",
+# Rotating BGM Pools: 6 distinct queries per style so consecutive clips NEVER get the same track!
+BGM_POOLS = {
+    "aura": [
+        "ytsearch1:dark phonk slowed reverb instrumental no copyright",
+        "ytsearch1:sigma cold edit dark bass instrumental royalty free",
+        "ytsearch1:aggressive funk montagen slowed instrumental no copyright",
+        "ytsearch1:cinematic dark trap beat edit instrumental no copyright",
+        "ytsearch1:hardwave cyberpunk dark synth edit beat no copyright",
+        "ytsearch1:menacing drill beat instrumental sports edit no copyright",
+    ],
+    "roast": [
+        "ytsearch1:savage roast hip hop trap beat instrumental no copyright",
+        "ytsearch1:sigma roast dark funk beat instrumental royalty free",
+        "ytsearch1:gangster comedy trap instrumental no copyright",
+        "ytsearch1:hard bass boom bap roast beat no copyright",
+        "ytsearch1:dark phonk meme edit instrumental no copyright",
+        "ytsearch1:swagger hip hop beat instrumental no copyright",
+    ],
+    "aesthetic": [
+        "ytsearch1:moody dark ambient motivation instrumental no copyright",
+        "ytsearch1:slowed reverb emotional cinematic piano beat no copyright",
+        "ytsearch1:dreamy synthwave aesthetic edit instrumental no copyright",
+        "ytsearch1:deep atmospheric epic sports edit music no copyright",
+        "ytsearch1:nostalgic lofi cinema beat instrumental no copyright",
+        "ytsearch1:emotional orchestral trap beat instrumental no copyright",
+    ],
+    "gaming": [
+        "ytsearch1:energetic gaming montage phonk beat no copyright",
+        "ytsearch1:fast hype electronic trap gaming beat no copyright",
+        "ytsearch1:esports clutch montage dubstep instrumental no copyright",
+        "ytsearch1:brazilian funk gaming edit instrumental no copyright",
+        "ytsearch1:adrenaline drum and bass gaming beat no copyright",
+        "ytsearch1:hard trap montage beat instrumental no copyright",
+    ],
+    "clash": [
+        "ytsearch1:intense dark trap confrontation beat no copyright",
+        "ytsearch1:aggressive drill instrumental hype no copyright",
+        "ytsearch1:epic faceoff suspense beat instrumental no copyright",
+        "ytsearch1:heavy bass tension edit music no copyright",
+    ],
+    "funny": [
+        "ytsearch1:upbeat quirky comedy background beat no copyright",
+        "ytsearch1:playful pizzicato meme background music no copyright",
+        "ytsearch1:bouncy hip hop funny vlog beat no copyright",
+        "ytsearch1:goofy jazz comedy instrumental no copyright",
+    ],
+    "vlog": [
+        "ytsearch1:chill aesthetic travel vlog lofi beat no copyright",
+        "ytsearch1:modern lifestyle vlog groove instrumental no copyright",
+        "ytsearch1:warm acoustic chill hip hop vlog beat no copyright",
+        "ytsearch1:smooth upbeat summer vlog music no copyright",
+    ],
+    "drama": [
+        "ytsearch1:cinematic suspense tension dark underscore no copyright",
+        "ytsearch1:dramatic pulse thriller background music no copyright",
+        "ytsearch1:intense emotional strings tension beat no copyright",
+        "ytsearch1:dark reality tv drama background music no copyright",
+    ],
+    "informative": [
+        "ytsearch1:clean modern documentary tech beat no copyright",
+        "ytsearch1:minimal smart explainer background music no copyright",
+        "ytsearch1:sleek corporate lo-fi documentary beat no copyright",
+        "ytsearch1:curious investigative podcast background music no copyright",
+    ],
+    "clean": [""],
 }
 
 DEFAULT_SFX_BY_STYLE = {
@@ -55,6 +109,13 @@ DEFAULT_SFX_BY_STYLE = {
     "vlog": "",
     "informative": "",
     "clean": "",
+}
+
+FALLBACK_STAMPS = {
+    "aura": ["UNPLAYABLE", "COLD", "PURE CLASS", "LETHAL", "GOD TIER", "UNREAL"],
+    "roast": ["ROASTED", "COOKED", "VIOLATION", "SAVAGE", "NO MERCY"],
+    "gaming": ["INSANE", "CLUTCH", "CRACKED", "CLEAN"],
+    "clash": ["COOKED", "HEATED", "NO WAY", "SAVAGE"],
 }
 
 
@@ -77,6 +138,11 @@ def _get_plugin_config():
         except Exception as e:
             print(f"[MAG73 Plugin] Config parse warning: {e}")
     return defaults
+
+
+def _pick_unique_bgm_query(edit_type, seed):
+    pool = BGM_POOLS.get(edit_type) or BGM_POOLS["vlog"]
+    return pool[abs(int(seed)) % len(pool)]
 
 
 def _devanagari_to_roman(text):
@@ -176,23 +242,23 @@ def _call_groq(prompt, temperature=0.25):
     return ""
 
 
-def _build_timestamped_transcript(words):
+def _build_timestamped_transcript(words, bucket_sec=3):
     if not words:
         return ""
     lines = []
-    bucket_start = int(float(words[0].get("start", 0)))
+    bucket_start = round(float(words[0].get("start", 0)), 1)
     curr = []
     for w in words:
-        ws = int(float(w.get("start", 0)))
-        if ws - bucket_start >= 5 and curr:
-            lines.append(f"[{bucket_start}s] " + " ".join(curr))
+        ws = round(float(w.get("start", 0)), 1)
+        if ws - bucket_start >= bucket_sec and curr:
+            lines.append(f"[{bucket_start:.1f}s] " + " ".join(curr))
             bucket_start = ws
             curr = []
         txt = str(w.get("word", "")).strip()
         if txt:
             curr.append(txt)
     if curr:
-        lines.append(f"[{bucket_start}s] " + " ".join(curr))
+        lines.append(f"[{bucket_start:.1f}s] " + " ".join(curr))
     return "\n".join(lines)
 
 
@@ -226,23 +292,27 @@ def _words_from_segments(segments):
     return derived
 
 
-def _local_faster_whisper_transcribe(audio_path, caption_lang="hinglish"):
-    """100% OFFLINE CPU transcription — ZERO rate limits, works even with 10 parallel jobs!"""
+def _local_faster_whisper_transcribe(audio_path, caption_lang="hinglish", initial_prompt=""):
+    """Upgraded offline `small` int8 model for sharp word accuracy with zero rate limits."""
     global _local_whisper_model
     if not HAS_FASTER_WHISPER or not os.path.exists(audio_path):
         return "", []
     try:
         if _local_whisper_model is None:
-            print("[MAG73 Offline Whisper] Loading base int8 model on CPU...")
-            _local_whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+            print("[MAG73 Offline Whisper] Loading small int8 model on CPU...")
+            try:
+                _local_whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
+            except Exception:
+                _local_whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
 
         lang_arg = "en" if caption_lang == "en" else None
         segments, info = _local_whisper_model.transcribe(
             audio_path,
             language=lang_arg,
+            initial_prompt=(initial_prompt[:220] if initial_prompt else None),
             word_timestamps=True,
             vad_filter=True,
-            beam_size=1,
+            beam_size=2,
         )
         words = []
         full_parts = []
@@ -274,78 +344,60 @@ def _local_faster_whisper_transcribe(audio_path, caption_lang="hinglish"):
         return "", []
 
 
-def _wait_for_gemini_file(video_file, max_wait=70):
-    deadline = time.time() + max_wait
-    while time.time() < deadline:
-        info = gemini_client.files.get(name=video_file.name)
-        state = getattr(info.state, "name", str(info.state))
-        if state == "ACTIVE":
-            return info
-        if state == "FAILED":
-            raise RuntimeError("Gemini media processing failed.")
-        time.sleep(3)
-    raise TimeoutError(f"Gemini file processing timed out after {max_wait}s")
-
-
-def _convert_words_smart(words, full_context, mode="hinglish"):
+def _proofread_and_format_words(words, full_context, mode="hinglish", context_hint=""):
+    """
+    Fixes common ASR mishearings (e.g., Chad/Jack -> Chat, Jorka -> Yorker, Shoaiba -> Shoaib,
+    proper names from video title) AND transliterates Hindi to clean Roman Hinglish while keeping
+    the EXACT SAME array length so every word's millisecond timestamp stays 100% locked!
+    """
+    if not words:
+        return words
     try:
         raw_list = [str(w.get("word", "")).strip() for w in words]
-        converted_all = []
-        for i in range(0, len(raw_list), 70):
-            chunk = raw_list[i:i + 70]
-            if not any(not x.isascii() for x in chunk):
-                converted_all.extend(chunk)
-                continue
-
-            if mode == "en":
-                instruction = (
-                    "Translate/clean each word in this JSON array into crisp English captions (ASCII A-Z only).\n"
-                    "Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
-                )
-            else:
-                instruction = (
-                    "Convert each word in this JSON array into natural Roman Hinglish (ASCII A-Z only, e.g. 'भाई'->'Bhai').\n"
-                    "Keep English words in normal English. Return ONLY a JSON array of strings of the EXACT SAME LENGTH.\n"
-                )
-
-            prompt = (
-                f"{instruction}"
-                f"Context: {full_context[:300]}\n"
-                f"Input: {json.dumps(chunk, ensure_ascii=False)}"
+        fixed_all = []
+        for i in range(0, len(raw_list), 65):
+            chunk = raw_list[i:i + 65]
+            lang_rule = (
+                "Fix obvious speech-recognition typos/mishearings into clean English (ASCII A-Z)."
+                if mode == "en"
+                else "Fix obvious speech-recognition typos/mishearings AND convert any Hindi script into clean Roman Hinglish (ASCII A-Z). Keep English words in English."
             )
+            prompt = f"""
+            You are a caption proofreader. {lang_rule}
+            Video Topic / Title Hint: "{context_hint}"
+            Fix misheard streamer/sports/proper nouns using the topic hint (e.g. 'Chad'/'Jack' when talking to viewers -> 'Chat', 'Jorka' -> 'Yorker', 'Shoaiba' -> 'Shoaib').
+            CRITICAL: Return ONLY a valid JSON array of strings of the EXACT SAME LENGTH ({len(chunk)} items). Do NOT merge or split words!
+            Sentence Context: {full_context[:320]}
+            Input Array: {json.dumps(chunk, ensure_ascii=False)}
+            """
             out = _call_groq(prompt, temperature=0.1)
             match = re.search(r"\[.*\]", out, re.DOTALL)
             if match:
                 try:
                     out_chunk = json.loads(match.group(0))
                     if isinstance(out_chunk, list) and len(out_chunk) == len(chunk):
-                        converted_all.extend(out_chunk)
+                        fixed_all.extend([_devanagari_to_roman(str(x)) for x in out_chunk])
                         continue
                 except Exception:
                     pass
-            converted_all.extend([_devanagari_to_roman(x) for x in chunk])
+            fixed_all.extend([_devanagari_to_roman(x) for x in chunk])
 
         for idx, w in enumerate(words):
-            if idx < len(converted_all):
-                w["word"] = str(converted_all[idx])
+            if idx < len(fixed_all):
+                w["word"] = str(fixed_all[idx])
+        print(f"[MAG73 Captions] Proofread {len(words)} words with context hint.")
     except Exception as e:
-        print(f"[MAG73 Audio] Caption formatting warning: {e}")
+        print(f"[MAG73 Captions] Proofread warning: {e}")
     return words
 
 
-def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hinglish", is_audio_only=False):
-    """
-    BULLETPROOF ZERO-DROP TRANSCRIPTION:
-    1. Vocal-filtered 16kHz mono MP3 extraction.
-    2. Quick Groq Whisper try -> INSTANT local offline `faster-whisper` fallback (zero 429 rate-limit drops!).
-    3. Clean Hinglish/English ASCII conversion with offline Devanagari fallback.
-    """
+def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hinglish", is_audio_only=False, context_hint=""):
     audio_path = "temp_vocal_16k.mp3"
     try:
         subprocess.run(
             [
                 "ffmpeg", "-y", "-i", media_path,
-                "-vn", "-af", "highpass=f=120,lowpass=f=4000,dynaudnorm=f=150:g=11",
+                "-vn", "-af", "highpass=f=110,lowpass=f=4200,dynaudnorm=f=150:g=11",
                 "-ac", "1", "-ar", "16000", "-b:a", "48k", audio_path,
             ],
             check=True,
@@ -360,20 +412,21 @@ def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hin
             print(f"[MAG73 Audio] FFmpeg extract error: {e}")
             return "", [], caption_lang
 
+    base_prompt = (
+        f"Topic: {context_hint}. Streamer talking to chat, clean accurate spelling."
+        if context_hint
+        else "Creator commentary talking to chat in English and Hinglish."
+    )
+
     words = []
     text = ""
 
-    # Try Groq Whisper once quickly (fast if not rate-limited)
     if GROQ_KEY and os.path.exists(audio_path) and os.path.getsize(audio_path) < 24 * 1024 * 1024:
         form_data = {
             "model": "whisper-large-v3-turbo",
             "response_format": "verbose_json",
             "timestamp_granularities[]": "word",
-            "prompt": (
-                "Clean English transcript."
-                if caption_lang == "en"
-                else "Indian creator gaming, roast, sports, and vlog commentary in Hindi, Hinglish, and English."
-            ),
+            "prompt": base_prompt[:220],
         }
         if caption_lang == "en":
             form_data["language"] = "en"
@@ -395,71 +448,97 @@ def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hin
                     words = _words_from_segments(data.get("segments"))
                 print(f"[MAG73 Audio] Groq Whisper extracted {len(words)} words.")
             else:
-                print(f"[MAG73 Audio] Groq Whisper HTTP {res.status_code} — switching to Offline Whisper!")
+                print(f"[MAG73 Audio] Groq Whisper HTTP {res.status_code} — using Offline Whisper small!")
         except Exception as e:
-            print(f"[MAG73 Audio] Groq Whisper skipped ({e}) — switching to Offline Whisper!")
+            print(f"[MAG73 Audio] Groq Whisper skipped ({e}) — using Offline Whisper small!")
 
-    # Guaranteed Offline faster-whisper fallback (100% immune to parallel 429 limits!)
     if len(words) < 5:
-        fw_text, fw_words = _local_faster_whisper_transcribe(audio_path, caption_lang=caption_lang)
+        fw_text, fw_words = _local_faster_whisper_transcribe(
+            audio_path, caption_lang=caption_lang, initial_prompt=base_prompt
+        )
         if len(fw_words) > len(words):
             words = fw_words
             text = fw_text
 
     if words:
-        has_non_ascii = any(not str(w.get("word", "")).isascii() for w in words)
-        if caption_lang == "en" and has_non_ascii:
-            words = _convert_words_smart(words, text, mode="en")
-        elif caption_lang == "hinglish" and has_non_ascii:
-            words = _convert_words_smart(words, text, mode="hinglish")
+        # Proofread short individual clips (<= 220 words) to eliminate Chad/Jack/Jorka/Shoaiba typos!
+        if len(words) <= 220:
+            words = _proofread_and_format_words(words, text, mode=caption_lang, context_hint=context_hint)
+        else:
+            for w in words:
+                txt = str(w.get("word", "")).strip()
+                if txt and not txt.isascii():
+                    w["word"] = _devanagari_to_roman(txt)
 
-        for w in words:
-            txt = str(w.get("word", "")).strip()
-            if txt and not txt.isascii():
-                w["word"] = _devanagari_to_roman(txt)
-
-        ts_text = _build_timestamped_transcript(words)
+        ts_text = _build_timestamped_transcript(words, bucket_sec=3 if len(words) <= 220 else 5)
         return ts_text, words, caption_lang
 
     return text, [], caption_lang
 
 
-def refine_clip_hook(clip_data, segment_transcript):
-    """Crash-safe verifier: guarantees Hook Title & Style strictly match THIS clip's exact spoken words."""
+def refine_clip_metadata(clip_data, segment_transcript, word_timestamps):
+    """
+    Runs on the 0.000s-trimmed clip to lock in:
+    1. Exact Hook Title matching THIS clip's words.
+    2. Exact Climax Second (`peak_sec`) matching the real punchline/reaction line.
+    3. Unique Contextual Impact Stamp (NEVER hardcoded 'AURA +1000').
+    """
     plugin_cfg = _get_plugin_config()
-    if not bool(plugin_cfg.get("banner_enabled", True)):
+    banner_on = bool(plugin_cfg.get("banner_enabled", True))
+    edit_type = str(clip_data.get("edit_type", "vlog")).lower()
+    dur = max(10.0, float(clip_data.get("end", 20.0)) - float(clip_data.get("start", 0.0)))
+    seed = int(clip_data.get("orig_start", 0)) + int(clip_data.get("clip_index", 0)) * 7
+
+    if not banner_on or edit_type == "clean":
         clip_data["title_text"] = ""
-        return clip_data
-    if str(clip_data.get("edit_type", "")).lower() == "clean":
-        clip_data["title_text"] = ""
-        return clip_data
 
     seg_txt = (segment_transcript or "").strip()
-    existing = str(clip_data.get("title_text", "")).strip()
-    if len(seg_txt) < 12:
-        return clip_data
+    if len(seg_txt) >= 12:
+        try:
+            prompt = f"""
+            Analyze this EXACT 0.0s-to-{dur:.1f}s clip transcript and return ONLY a JSON object:
+            - "title_text": Punchy 3-5 word UPPERCASE ASCII hook strictly about THIS clip (never mention anything not here).
+            - "peak_sec": Exact float second between {max(3.0, dur*0.25):.1f} and {max(5.0, dur-2.5):.1f} where the biggest reaction, punchline, or climax line is spoken.
+            - "impact_stamp": A crisp 1-2 word UPPERCASE stamp matching the moment (e.g. "UNPLAYABLE", "PURE PACE", "COOKED", "COLD", "SAVAGE", "LETHAL") ONLY if style is aura/roast/gaming/clash, else "". NEVER write "AURA +1000"!
 
-    try:
-        prompt = f"""
-        Read the EXACT spoken dialogue inside this 15-35s short clip and write ONE viral 3-6 word Hook Title (UPPERCASE ASCII ONLY).
-        CRITICAL: The title MUST 100% match THIS transcript! NEVER mention anything not spoken here.
-        Examples: "QAZI ALWAYS READY TO ROAST", "ONLY LEGENDS UNDERSTAND THIS", "HIS MINDSET HIT DIFFERENT", "12000 ELECTRICITY BILL SHOCK"
-        Current draft: "{existing}"
-        Exact Clip Transcript:
-        {seg_txt[:1500]}
+            Style: {edit_type}
+            Video Title: "{clip_data.get('video_title', '')}"
+            Transcript:
+            {seg_txt[:1800]}
 
-        Return ONLY the 3-6 word title (no quotes, no explanation).
-        """
-        raw = (_call_groq(prompt, temperature=0.2) or "").strip()
-        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-        if lines:
-            refined = re.sub(r"[^A-Za-z0-9 !?@#.-]", "", lines[0]).strip().upper()
-            words = refined.split()
-            if 2 <= len(words) <= 7:
-                clip_data["title_text"] = " ".join(words)
-                print(f"[MAG73 Hook] Verified exact clip hook: '{clip_data['title_text']}'")
-    except Exception as e:
-        print(f"[MAG73 Hook] Keeping existing hook '{existing}' (warn: {e})")
+            Return ONLY JSON: {{"title_text": "...", "peak_sec": 9.5, "impact_stamp": "UNPLAYABLE"}}
+            """
+            raw = (_call_groq(prompt, temperature=0.25) or "").strip()
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                parsed = json.loads(m.group(0))
+                if isinstance(parsed, dict):
+                    if banner_on and edit_type != "clean":
+                        t = re.sub(r"[^A-Za-z0-9 !?@#.-]", "", str(parsed.get("title_text", ""))).strip().upper()
+                        if 2 <= len(t.split()) <= 6:
+                            clip_data["title_text"] = t
+                    pk = float(parsed.get("peak_sec", 0))
+                    if 2.5 <= pk <= dur - 2.0:
+                        clip_data["peak_sec"] = round(pk, 2)
+                    st = re.sub(r"[^A-Za-z0-9 !?+-]", "", str(parsed.get("impact_stamp", ""))).strip().upper()
+                    if st and "AURA +1000" not in st and len(st.split()) <= 2:
+                        clip_data["impact_stamp"] = st
+        except Exception as e:
+            print(f"[MAG73 Meta] Refine warning: {e}")
+
+    # Guarantee varied stamp fallback if needed (never repeating AURA +1000)
+    if edit_type in FALLBACK_STAMPS:
+        cur_stamp = str(clip_data.get("impact_stamp", "")).strip().upper()
+        if not cur_stamp or "1000" in cur_stamp:
+            pool = FALLBACK_STAMPS[edit_type]
+            clip_data["impact_stamp"] = pool[seed % len(pool)]
+    else:
+        clip_data["impact_stamp"] = ""
+
+    print(
+        f"[MAG73 Meta] Hook='{clip_data.get('title_text','')}' | Peak={clip_data.get('peak_sec')}s | "
+        f"Stamp='{clip_data.get('impact_stamp','')}' | Variant={clip_data.get('variant_id')} | CapStyle={clip_data.get('caption_style')}"
+    )
     return clip_data
 
 
@@ -519,8 +598,8 @@ def _deduplicate_clips(clips, max_dur, words):
         e = min(max_dur, float(c.get("end", s + 20)))
         if e - s < 10.0:
             e = min(max_dur, s + 18.0)
-        if e - s > 38.0:
-            e = s + 34.0
+        if e - s > 36.0:
+            e = s + 33.0
         c["start"] = int(round(s))
         c["end"] = int(round(e))
         if _is_outro_clip(c, words, max_dur):
@@ -544,7 +623,7 @@ def _deduplicate_clips(clips, max_dur, words):
     return kept
 
 
-def _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_cfg):
+def _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_cfg, video_title=""):
     bgm_enabled = bool(plugin_cfg.get("bgm_enabled", True))
     sfx_enabled = bool(plugin_cfg.get("sfx_enabled", True))
     banner_enabled = bool(plugin_cfg.get("banner_enabled", True))
@@ -570,28 +649,34 @@ def _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_
                 "focus_x": "center",
                 "title_text": "WATCH THIS MOMENT!" if banner_enabled else "",
                 "peak_sec": int(min(10.0, max(3.0, end_s * 0.5))),
-                "bgm_query": "",
-                "sfx_query": "",
             }
         ]
 
-    for c in clips:
+    # Assign UNIQUE visual variant, caption template, BGM track, and stamp per clip!
+    style_counters = {}
+    for idx, c in enumerate(clips):
         et = str(c.get("edit_type", "vlog")).strip().lower()
         if style_pref in VALID_STYLES and style_pref != "auto":
             et = style_pref
         elif et not in VALID_STYLES:
             et = "vlog"
         c["edit_type"] = et
+        c["video_title"] = video_title
+
+        count_for_style = style_counters.get(et, 0)
+        style_counters[et] = count_for_style + 1
+
+        # Guarantee variety across every single clip!
+        c["variant_id"] = (count_for_style + idx) % 5
+        c["caption_style"] = CAPTION_STYLES[(idx + count_for_style) % len(CAPTION_STYLES)]
 
         if bgm_enabled and et != "clean":
-            if not str(c.get("bgm_query", "")).strip():
-                c["bgm_query"] = DEFAULT_BGM_BY_STYLE.get(et, "")
+            c["bgm_query"] = _pick_unique_bgm_query(et, count_for_style + idx)
         else:
             c["bgm_query"] = ""
 
         if sfx_enabled and et != "clean":
-            if not str(c.get("sfx_query", "")).strip():
-                c["sfx_query"] = DEFAULT_SFX_BY_STYLE.get(et, "")
+            c["sfx_query"] = DEFAULT_SFX_BY_STYLE.get(et, "")
         else:
             c["sfx_query"] = ""
 
@@ -600,23 +685,30 @@ def _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_
         elif not str(c.get("title_text", "")).strip() and et != "clean":
             c["title_text"] = "WATCH THIS MOMENT!"
 
-    print(f"[MAG73 Director] Approved {len(clips)} unique clip(s): {[c['edit_type'] for c in clips]}")
+        if et in FALLBACK_STAMPS:
+            st = str(c.get("impact_stamp", "")).strip().upper()
+            if not st or "1000" in st:
+                pool = FALLBACK_STAMPS[et]
+                c["impact_stamp"] = pool[(idx + count_for_style) % len(pool)]
+        else:
+            c["impact_stamp"] = ""
+
+    print(
+        f"[MAG73 Director] Approved {len(clips)} diverse clip(s): "
+        f"{[(c['edit_type'], 'v'+str(c['variant_id']), c['caption_style']) for c in clips]}"
+    )
     return clips
 
 
 def run_fast_scan_council(audio_path, audience_signals, video_path=None):
-    """
-    4x FASTER SCAN ENGINE:
-    Uses lightweight audio transcript + YouTube Most-Replayed Heatmap + Top Comments.
-    Finds ALL genuinely viral moments across the entire video in ~30-50 seconds!
-    """
     plugin_cfg = _get_plugin_config()
     caption_lang = str(plugin_cfg.get("caption_lang", "hinglish")).lower()
     style_pref = os.getenv("EDIT_STYLE", "auto").strip().lower()
     custom_prompt = os.getenv("CUSTOM_PROMPT", "").strip()
+    video_title = str(audience_signals.get("video_title", "") or "")
 
     transcript_text, word_timestamps, _ = extract_accurate_transcript(
-        audio_path, caption_lang=caption_lang, is_audio_only=True
+        audio_path, caption_lang=caption_lang, is_audio_only=True, context_hint=video_title
     )
     vid_dur = float(audience_signals.get("duration") or 0.0) or _get_media_duration_sec(audio_path)
 
@@ -625,9 +717,9 @@ def run_fast_scan_council(audio_path, audience_signals, video_path=None):
     prompt = f"""
     You are a TOP VIRAL INSTAGRAM REELS / YOUTUBE SHORTS DIRECTOR.
     {user_rule}
-    Video Title: "{audience_signals.get('video_title', '')}"
+    Video Title: "{video_title}"
     Video Duration: {int(vid_dur)} seconds
-    User Style Preference: "{style_pref}" (if "auto", pick the EXACT best viral style for EACH individual clip!)
+    User Style Preference: "{style_pref}" (if "auto", give EACH clip its own natural distinct style — do NOT put 'aura' on every clip!)
 
     AUDIENCE VIRAL SIGNALS:
     - YouTube Most-Replayed Heatmap Spikes (sec): {audience_signals.get('heatmap_spikes', [])}
@@ -638,43 +730,33 @@ def run_fast_scan_council(audio_path, audience_signals, video_path=None):
     {transcript_text[:22000]}
 
     STRICT RULES:
-    1. Extract ALL genuinely high-hype, non-overlapping viral moments across the ENTIRE video (14-36s each, score 84-100).
+    1. Extract ALL genuinely high-hype, non-overlapping viral moments across the ENTIRE video (14-35s each, score 84-100).
     2. STRICTLY REJECT outros ("bye bye", "subscribe"), boring intros, or dull filler.
-    3. PICK THE EXACT RIGHT VIRAL STYLE ("edit_type") FOR EACH CLIP:
-       - "roast": Savage insult, funny roast, cheeky comeback, double-meaning banter (gets Viral Red Ribbon + HDR CC + Climax Drop!).
-       - "aura": Cold badass line, goosebumps clutch, savage mindset moment (gets Dark Aura Drop + Flash + Phonk!).
-       - "aesthetic": Deep mindset quote, sports pride, emotional/motivational speech (gets Moody Cinema CC + Glowing Lower-Third!).
-       - "funny": Pure comedy reaction, laugh, fail.
-       - "gaming": Fast action gameplay / gunfight.
-       - "vlog": Food, street exploring, lifestyle story.
-       - "drama": Heated argument / confrontation.
-       - "informative": Cool fact / breakdown.
-    4. EXACT HOOK TITLE ("title_text"): Punchy 3-6 word uppercase ASCII hook that STRICTLY matches the dialogue inside THAT clip's exact [start, end] timestamps!
-    5. "layout_mode": "vertical_full" for talking-head / interviews / vlogs / sports; "gaming_wide" ONLY for 16:9 gameplay HUD.
+    3. MIX STYLES NATURALLY ("roast", "aura", "aesthetic", "funny", "gaming", "vlog", "drama", "clash", "informative") based on each clip's actual vibe!
+    4. EXACT HOOK TITLE ("title_text"): Punchy 3-5 word uppercase ASCII hook strictly about THAT clip.
+    5. "impact_stamp": Unique 1-2 word punchy stamp (e.g. "UNPLAYABLE", "PURE PACE", "COLD", "COOKED", "SAVAGE") — NEVER repeat "AURA +1000"!
 
     Return ONLY valid JSON array:
     [
       {{
         "start": 42,
-        "end": 68,
+        "end": 66,
         "score": 92,
-        "edit_type": "roast",
+        "edit_type": "aura",
         "layout_mode": "vertical_full",
         "focus_x": "center",
-        "title_text": "ALWAYS READY TO ROAST THEM",
-        "peak_sec": 14,
-        "bgm_query": "",
-        "sfx_query": ""
+        "title_text": "UNPLAYABLE 160 KPH YORKER",
+        "impact_stamp": "UNPLAYABLE",
+        "peak_sec": 12
       }}
     ]
     """
     raw_out = _call_groq(prompt, temperature=0.25)
     raw_clips = _clean_json(raw_out)
-    return _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_cfg)
+    return _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_cfg, video_title=video_title)
 
 
 def run_super_ai_council(video_path, audience_signals):
-    """Used for Live Stream & direct legacy mode."""
     if isinstance(audience_signals, list):
         audience_signals = {"chat_spikes": audience_signals, "heatmap_spikes": [], "comment_timestamps": [], "top_comments": []}
 
@@ -682,8 +764,11 @@ def run_super_ai_council(video_path, audience_signals):
     caption_lang = str(plugin_cfg.get("caption_lang", "hinglish")).lower()
     style_pref = os.getenv("EDIT_STYLE", "auto").strip().lower()
     custom_prompt = os.getenv("CUSTOM_PROMPT", "").strip()
+    video_title = str(audience_signals.get("video_title", "") or "")
 
-    transcript_text, word_timestamps, _ = extract_accurate_transcript(video_path, caption_lang=caption_lang)
+    transcript_text, word_timestamps, _ = extract_accurate_transcript(
+        video_path, caption_lang=caption_lang, context_hint=video_title
+    )
     vid_dur = _get_media_duration_sec(video_path)
 
     user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION: {custom_prompt}\n" if custom_prompt else ""
@@ -695,9 +780,9 @@ def run_super_ai_council(video_path, audience_signals):
     Transcript:
     {transcript_text[:16000]}
 
-    Return ONLY valid JSON array of best viral clips (14-35s, score 84-100) with accurate "edit_type" ("roast", "aura", "aesthetic", "vlog", "gaming", "funny", "drama", "clash", "informative", "clean"), "layout_mode", "title_text" (3-6 ASCII words), and "peak_sec".
+    Return ONLY valid JSON array of best viral clips (14-35s, score 84-100) with diverse "edit_type", "layout_mode", "title_text" (3-5 ASCII words), "impact_stamp" (unique 1-2 words, NEVER "AURA +1000"), and "peak_sec".
     """
     raw_out = _call_groq(prompt, temperature=0.25)
     raw_clips = _clean_json(raw_out)
-    clips = _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_cfg)
+    clips = _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_cfg, video_title=video_title)
     return clips, word_timestamps
