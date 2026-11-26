@@ -18,67 +18,91 @@ FALLBACK_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 PRO_FONT_FILE = "Montserrat-ExtraBold.ttf"
 PRO_FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-ExtraBold.ttf"
 
-# 5 Distinct Visual Color/Climax Variants (so even 5 Aura clips NEVER look the same!)
-# ASS BGR hex (&H00BBGGRR&), FFmpeg hex (0xRRGGBB)
+# PRO CINEMA HDR CC VARIANTS:
+# - Lifted shadow curves (ZERO crushed pitch-black faces!)
+# - Crisp 3x3 micro-sharpening (sharp 1080p HD look, zero muddy artifacts)
+# - Smart 2.0-second B&W Silver Burst ONLY on obsidian_bw climax (snaps back to crisp HDR color!)
 VISUAL_VARIANTS = [
     {
-        "name": "obsidian_bw",
+        "name": "obsidian_silver_burst",
         "hl": "&H0015CCFA&", "pop": "&H004444FF&", "acc": "&H0015CCFA&",
         "ribbon": "0x11131C@0.82", "pbar": "0xEF4444", "border": "0xEF4444",
-        "base_grade": ["eq=contrast=1.18:saturation=0.92:brightness=-0.01", "unsharp=5:5:0.70:5:5:0.0", "vignette=PI/6"],
-        "climax_grade": lambda pk: [
-            f"eq=brightness=0.40:enable='between(t,{pk:.2f},{pk+0.11:.2f})'",
-            f"hue=s=0:enable='gte(t,{pk+0.11:.2f})'",
-            f"eq=contrast=1.28:brightness=-0.03:enable='gte(t,{pk+0.11:.2f})'",
+        "base_grade": [
+            "curves=m='0/0.02 0.25/0.25 0.5/0.53 0.75/0.80 1/1'",
+            "eq=contrast=1.08:saturation=1.15:brightness=0.01",
+            "unsharp=3:3:0.55:3:3:0.0",
         ],
-    },
-    {
-        "name": "crimson_dark",
-        "hl": "&H005555FF&", "pop": "&H0015CCFA&", "acc": "&H005555FF&",
-        "ribbon": "0x7F1119@0.78", "pbar": "0xF43F5E", "border": "0xF43F5E",
-        "base_grade": ["eq=contrast=1.16:saturation=1.12:brightness=-0.01", "unsharp=5:5:0.70:5:5:0.0", "vignette=PI/6"],
-        "climax_grade": lambda pk: [
-            f"eq=brightness=0.38:enable='between(t,{pk:.2f},{pk+0.11:.2f})'",
-            f"colorbalance=rs=0.14:gs=-0.06:bs=-0.06:enable='gte(t,{pk+0.11:.2f})'",
-            f"eq=contrast=1.24:saturation=0.78:enable='gte(t,{pk+0.11:.2f})'",
-        ],
-    },
-    {
-        "name": "ice_cold",
-        "hl": "&H00F8BD38&", "pop": "&H00FFFFFF&", "acc": "&H00F8BD38&",
-        "ribbon": "0x0A192F@0.82", "pbar": "0x38BDF8", "border": "0x38BDF8",
-        "base_grade": ["eq=contrast=1.15:saturation=1.05", "colorbalance=rs=-0.05:gs=0.01:bs=0.07", "unsharp=5:5:0.65:5:5:0.0"],
-        "climax_grade": lambda pk: [
-            f"eq=brightness=0.36:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
-            f"colorbalance=rs=-0.09:gs=0.02:bs=0.15:enable='gte(t,{pk+0.10:.2f})'",
-            f"eq=contrast=1.22:enable='gte(t,{pk+0.10:.2f})'",
-        ],
-    },
-    {
-        "name": "golden_cinema",
-        "hl": "&H0000D7FF&", "pop": "&H0080DE4A&", "acc": "&H0000D7FF&",
-        "ribbon": "0x1E1506@0.82", "pbar": "0xF59E0B", "border": "0xF59E0B",
-        "base_grade": ["eq=contrast=1.13:saturation=1.22:brightness=0.01", "colorbalance=rs=0.06:gs=0.02:bs=-0.05", "unsharp=5:5:0.60:5:5:0.0"],
         "climax_grade": lambda pk: [
             f"eq=brightness=0.30:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
-            f"eq=contrast=1.22:saturation=1.30:enable='gte(t,{pk+0.10:.2f})'",
+            f"hue=s=0:enable='between(t,{pk+0.10:.2f},{pk+2.10:.2f})'",
+            f"eq=contrast=1.14:brightness=0.03:enable='between(t,{pk+0.10:.2f},{pk+2.10:.2f})'",
         ],
     },
     {
-        "name": "neon_emerald",
+        "name": "crimson_hdr",
+        "hl": "&H005555FF&", "pop": "&H0015CCFA&", "acc": "&H005555FF&",
+        "ribbon": "0x7F1119@0.78", "pbar": "0xF43F5E", "border": "0xF43F5E",
+        "base_grade": [
+            "curves=m='0/0.02 0.25/0.25 0.5/0.53 0.75/0.80 1/1'",
+            "eq=contrast=1.09:saturation=1.18:brightness=0.01",
+            "colorbalance=rs=0.04:gs=0.00:bs=-0.02",
+            "unsharp=3:3:0.55:3:3:0.0",
+        ],
+        "climax_grade": lambda pk: [
+            f"eq=brightness=0.28:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
+            f"colorbalance=rs=0.09:gs=-0.03:bs=-0.03:enable='between(t,{pk+0.10:.2f},{pk+2.20:.2f})'",
+        ],
+    },
+    {
+        "name": "ice_cinema",
+        "hl": "&H00F8BD38&", "pop": "&H00FFFFFF&", "acc": "&H00F8BD38&",
+        "ribbon": "0x0A192F@0.82", "pbar": "0x38BDF8", "border": "0x38BDF8",
+        "base_grade": [
+            "curves=m='0/0.02 0.25/0.26 0.5/0.53 0.75/0.80 1/1'",
+            "eq=contrast=1.08:saturation=1.14:brightness=0.01",
+            "colorbalance=rs=-0.03:gs=0.01:bs=0.05",
+            "unsharp=3:3:0.55:3:3:0.0",
+        ],
+        "climax_grade": lambda pk: [
+            f"eq=brightness=0.26:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
+            f"colorbalance=rs=-0.06:gs=0.01:bs=0.10:enable='between(t,{pk+0.10:.2f},{pk+2.10:.2f})'",
+        ],
+    },
+    {
+        "name": "golden_vibrant",
+        "hl": "&H0000D7FF&", "pop": "&H0080DE4A&", "acc": "&H0000D7FF&",
+        "ribbon": "0x1E1506@0.82", "pbar": "0xF59E0B", "border": "0xF59E0B",
+        "base_grade": [
+            "curves=m='0/0.02 0.25/0.26 0.5/0.54 0.75/0.81 1/1'",
+            "eq=contrast=1.08:saturation=1.22:brightness=0.02",
+            "colorbalance=rs=0.04:gs=0.02:bs=-0.04",
+            "unsharp=3:3:0.55:3:3:0.0",
+        ],
+        "climax_grade": lambda pk: [
+            f"eq=brightness=0.24:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
+            f"eq=contrast=1.12:saturation=1.28:enable='between(t,{pk+0.10:.2f},{pk+2.00:.2f})'",
+        ],
+    },
+    {
+        "name": "emerald_pop",
         "hl": "&H0080DE4A&", "pop": "&H0015CCFA&", "acc": "&H0080DE4A&",
         "ribbon": "0x091A14@0.82", "pbar": "0x4ADE80", "border": "0x4ADE80",
-        "base_grade": ["eq=contrast=1.16:saturation=1.16", "colorbalance=rs=-0.03:gs=0.04:bs=0.04", "unsharp=5:5:0.70:5:5:0.0"],
+        "base_grade": [
+            "curves=m='0/0.02 0.25/0.26 0.5/0.53 0.75/0.80 1/1'",
+            "eq=contrast=1.09:saturation=1.18:brightness=0.01",
+            "colorbalance=rs=-0.02:gs=0.03:bs=0.02",
+            "unsharp=3:3:0.55:3:3:0.0",
+        ],
         "climax_grade": lambda pk: [
-            f"eq=brightness=0.34:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
-            f"eq=contrast=1.24:saturation=1.24:enable='gte(t,{pk+0.10:.2f})'",
+            f"eq=brightness=0.26:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
+            f"eq=contrast=1.14:saturation=1.25:enable='between(t,{pk+0.10:.2f},{pk+2.00:.2f})'",
         ],
     },
 ]
 
 HYPE_WORDS = {
-    "SIX", "FOUR", "OUT", "OMG", "WTF", "BRO", "BHAI", "ROAST", "CLUTCH", "YORKER",
-    "INSANE", "CRAZY", "BOOM", "DEAD", "WIN", "AURA", "LEGEND", "COLD", "FAST", "100", "200",
+    "SIX", "FOUR", "OUT", "CATCH", "OMG", "WTF", "BRO", "BHAI", "ROAST", "CLUTCH",
+    "YORKER", "INSANE", "CRAZY", "BOOM", "DEAD", "WIN", "AURA", "LEGEND", "COLD", "100", "200",
 }
 
 
@@ -165,23 +189,16 @@ def _probe_video_info(video_path):
         )
         data = json.loads(out)
         streams = data.get("streams") or [{}]
-        w = int(streams[0].get("width", 1280))
-        h = int(streams[0].get("height", 720))
+        w = int(streams[0].get("width", 1920))
+        h = int(streams[0].get("height", 1080))
         dur = float((data.get("format") or {}).get("duration", 60.0))
         return w, h, dur
     except Exception:
-        return 1280, 720, 60.0
+        return 1920, 1080, 60.0
 
 
 def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
-    """
-    ANTI-POSTER MOTION-VERIFIED REFRAMER:
-    1. Rejects static wall posters / photos (requires real pixel motion inside the face box!).
-    2. Rejects small corner reaction PiP / poster boxes (bottom-right & bottom-left corners) so the
-       main video action is NEVER replaced by a half-cropped corner poster!
-    3. When no real main-frame speaker face is present (e.g. cricket/gameplay), smoothly tracks the
-       central visual action center clamped cleanly to [0.28, 0.72].
-    """
+    """Anti-poster motion-verified speaker & central action auto-reframer."""
     fallback_x = "0.22*(iw-ow)" if focus_x == "left" else ("0.78*(iw-ow)" if focus_x == "right" else "(iw-ow)/2")
     if not HAS_CV2:
         return fallback_x
@@ -227,7 +244,6 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
             prev_thumb = thumb
             prev_gray = gray
 
-            # 1. Detect faces with strict anti-poster & anti-corner-PiP filtering
             faces = face_cascade.detectMultiScale(gray, scaleFactor=1.18, minNeighbors=6, minSize=(42, 42))
             valid_faces = []
             for (fx, fy, fw_b, fh_b) in faces:
@@ -235,12 +251,10 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
                 cy_n = (fy + fh_b * 0.5) / float(sh)
                 w_n = fw_b / 480.0
 
-                # Exclude bottom-corner PiP / wall-poster zones (where reaction overlays live!)
                 in_bottom_corner = (cy_n > 0.44) and (cx_n > 0.68 or cx_n < 0.32)
                 if in_bottom_corner and w_n < 0.28:
                     continue
 
-                # Anti-poster motion verification: real faces move/blink/talk; wall posters stay frozen!
                 roi_motion = 10.0
                 if diff_map is not None:
                     roi = diff_map[fy:fy + fh_b, fx:fx + fw_b]
@@ -252,10 +266,8 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
 
             face_x = max(valid_faces, key=lambda x: x[1])[0] if valid_faces else None
 
-            # 2. Central Action Motion Fallback (strictly excludes corner PiP boxes!)
             action_x = None
             if face_x is None and diff_map is not None:
-                # Focus on main viewport: x in [12%..76%], y in [8%..80%] (avoids bottom-right facecam/poster!)
                 x1, x2 = int(480 * 0.12), int(480 * 0.76)
                 y1, y2 = int(sh * 0.08), int(sh * 0.80)
                 sub = diff_map[y1:y2, x1:x2]
@@ -266,7 +278,6 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
                     if total_e > 0:
                         xs_idx = np.arange(x1, x2, dtype=np.float32)
                         raw_cx = float(np.sum(xs_idx * col_energy) / total_e) / 480.0
-                        # Gentle blend with center so camera stays steady
                         action_x = max(0.28, min(0.72, raw_cx * 0.55 + 0.50 * 0.45))
 
             samples.append({"t": round(t_rel, 2), "cut": is_cut, "fx": face_x, "ax": action_x})
@@ -298,7 +309,6 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
                 cx = axs[len(axs) // 2]
             else:
                 cx = 0.50
-            # Safe clamp: never snap to extreme far edges where PiP/posters live
             cx = max(0.22, min(0.75, cx))
             shot_targets.append((sh_list[0]["t"], sh_list[-1]["t"] + step, cx))
 
@@ -317,7 +327,7 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
         for st, en, cx in reversed(merged[:-1]):
             expr = f"if(lt(t,{en:.2f}),clip({cx:.3f}*iw-ow/2,0,iw-ow),{expr})"
 
-        print(f"[MAG73 SmartCrop] Anti-poster reframed {len(merged)} shot(s): {[round(x[2],2) for x in merged]}")
+        print(f"[MAG73 SmartCrop] Reframed {len(merged)} shot(s): {[round(x[2],2) for x in merged]}")
         return expr
     except Exception as e:
         print(f"[MAG73 SmartCrop] Fallback to center crop: {e}")
@@ -325,7 +335,7 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
 
 
 def _snap_clean_duration(start, duration, max_file_dur, words):
-    avail_max = max(8.0, min(37.0, max_file_dur - start - 0.08))
+    avail_max = max(8.0, min(28.0, max_file_dur - start - 0.08))
     target_end = start + duration
     if not words:
         return min(duration, avail_max)
@@ -349,11 +359,7 @@ def _snap_clean_duration(start, duration, max_file_dur, words):
 
 
 def _analyze_audio_and_sync_peak(video_path, start, duration, ai_peak_sec=None):
-    """
-    Combines AI's punchline timestamp with local audio transient spike (±1.3s) so flash/shake/SFX
-    lands ON the exact punchline/hype reaction instead of random commentary or black screens!
-    """
-    fallback_peak = float(ai_peak_sec) if (ai_peak_sec and 2.5 <= float(ai_peak_sec) <= duration - 2.0) else max(3.5, duration * 0.52)
+    fallback_peak = float(ai_peak_sec) if (ai_peak_sec and 2.5 <= float(ai_peak_sec) <= duration - 2.0) else max(3.5, duration * 0.50)
     try:
         raw = subprocess.check_output(
             [
@@ -367,7 +373,7 @@ def _analyze_audio_and_sync_peak(video_path, start, duration, ai_peak_sec=None):
         if total_samples < 8000:
             return round(fallback_peak, 2), False
 
-        bucket_samples = 1600  # 0.20s resolution
+        bucket_samples = 1600
         rms_list = []
         for off in range(0, total_samples - bucket_samples + 1, bucket_samples):
             chunk = struct.unpack(f"<{bucket_samples}h", raw[off * 2:(off + bucket_samples) * 2])
@@ -381,7 +387,6 @@ def _analyze_audio_and_sync_peak(video_path, start, duration, ai_peak_sec=None):
         p25_floor = sorted_rms[len(sorted_rms) // 4]
         has_existing_bgm = p25_floor > 0.042
 
-        # Search tightly around AI's punchline peak (±1.4s), or 35%-78% window if no AI peak
         if ai_peak_sec and 2.5 <= float(ai_peak_sec) <= duration - 2.0:
             win_s = max(2.5, float(ai_peak_sec) - 1.4)
             win_e = min(duration - 1.8, float(ai_peak_sec) + 1.4)
@@ -512,9 +517,6 @@ def generate_pro_ass(
     words, clip_start, clip_end, font_name, edit_type, variant, caption_style,
     is_wide_blur, title_text, impact_stamp, peak_sec, ass_path, captions_on=True
 ):
-    """
-    5 DISTINCT CAPTION TEMPLATES + Short Punchy Upper Hook Banner (3.2s max!) + Unique Contextual Climax Stamp.
-    """
     hl_color = variant["hl"]
     pop_color = variant["pop"]
     acc_color = variant["acc"]
@@ -522,7 +524,6 @@ def generate_pro_ass(
     cap_margin_v = 320 if is_wide_blur else 380
     hook_margin_v = 205 if not is_wide_blur else 255
 
-    # Configure distinct visual styling per Caption Template
     if caption_style == "boxed_pill":
         cap_style_line = (
             f"Style: Default,{font_name},74,&H00FFFFFF,{hl_color},&H280B0F18,&H00000000,"
@@ -537,7 +538,7 @@ def generate_pro_ass(
         max_words_chunk, max_chars_chunk = 3, 15
     elif caption_style == "word_slam":
         cap_style_line = (
-            f"Style: Default,{font_name},96,&H00FFFFFF,{hl_color},&H00000000,&HC8000000,"
+            f"Style: Default,{font_name},94,&H00FFFFFF,{hl_color},&H00000000,&HC8000000,"
             f"-1,0,0,0,100,100,2,0,1,11,5,2,50,50,{cap_margin_v + 20},1"
         )
         max_words_chunk, max_chars_chunk = 2, 11
@@ -547,7 +548,7 @@ def generate_pro_ass(
             f"-1,-1,0,0,100,100,1,0,1,7,4,2,65,65,{cap_margin_v},1"
         )
         max_words_chunk, max_chars_chunk = 3, 17
-    else:  # hormozi_pop
+    else:
         cap_style_line = (
             f"Style: Default,{font_name},84,&H00FFFFFF,{hl_color},&H00000000,&HC0000000,"
             f"-1,0,0,0,100,100,1,0,1,10,5,2,60,60,{cap_margin_v},1"
@@ -570,8 +571,7 @@ Style: Stamp,{font_name},92,{acc_color},&H00FFFFFF,&H00000000,&HCC000000,-1,0,0,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = []
-    # Short punchy hook banner (strictly 3.2s max — NEVER stays stuck for 15 seconds!)
-    hook_end = min(3.20, max(2.2, (clip_end - clip_start) * 0.28))
+    hook_end = min(3.10, max(2.2, (clip_end - clip_start) * 0.25))
 
     if title_text and edit_type != "clean":
         styled_hook = _format_two_line_hook(title_text, acc_color)
@@ -581,7 +581,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         )
         lines.append(f"Dialogue: 2,{_format_ass_time(0.08)},{_format_ass_time(hook_end)},Hook,,0,0,0,,{anim_hook}")
 
-    # Contextual unique climax stamp (only ~1.0s right on peak_sec)
     if impact_stamp and edit_type in ("roast", "aura", "clash", "gaming"):
         st_s = peak_sec + 0.04
         st_e = min(clip_end - clip_start - 0.25, st_s + 1.05)
@@ -685,6 +684,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 def _build_layout_and_motion(video_path, start, in_w, in_h, focus_x, duration, edit_type, variant, peak_sec, layout_mode):
+    """
+    NATIVE 1080x1920 CRYSTAL HD PIPELINE (NO 720p downscale!):
+    Subtle sharp zoom (max 1.14x) preserves full 1080p clarity without pixelation!
+    """
     dur_frames = max(30, int(duration * 30))
     pk = float(peak_sec)
     is_landscape = (in_w > in_h)
@@ -697,42 +700,43 @@ def _build_layout_and_motion(video_path, start, in_w, in_h, focus_x, duration, e
         is_wide_blur = (edit_type in ("gaming", "clash")) and is_landscape
 
     peak_bell = f"max(0,1-abs(on/30-{pk:.2f})/0.80)"
-    shake_win = f"between(on/30,{pk:.2f},{pk+0.38:.2f})"
+    shake_win = f"between(on/30,{pk:.2f},{pk+0.36:.2f})"
 
     if edit_type in ("roast", "aura"):
-        z_expr = f"1.02+0.13*max(0,1-on/12)+0.07*min(1,on/{dur_frames})+0.20*{peak_bell}"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+16*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+16*cos(on*3.6)*{shake_win},0,ih-ih/zoom)"
+        z_expr = f"1.01+0.08*max(0,1-on/11)+0.04*min(1,on/{dur_frames})+0.12*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+14*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+14*cos(on*3.6)*{shake_win},0,ih-ih/zoom)"
     elif edit_type == "aesthetic":
-        z_expr = f"1.02+0.10*max(0,1-on/16)+0.09*min(1,on/{dur_frames})+0.10*{peak_bell}"
+        z_expr = f"1.01+0.07*max(0,1-on/14)+0.06*min(1,on/{dur_frames})+0.07*{peak_bell}"
         x_expr = "iw/2-(iw/zoom/2)"
         y_expr = "ih/2-(ih/zoom/2)"
     elif edit_type in ("funny", "gaming", "clash"):
-        z_expr = f"1.01+0.12*max(0,1-on/12)+0.05*min(1,on/{dur_frames})+0.16*{peak_bell}"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+12*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+12*cos(on*3.5)*{shake_win},0,ih-ih/zoom)"
+        z_expr = f"1.00+0.08*max(0,1-on/11)+0.03*min(1,on/{dur_frames})+0.11*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+11*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+11*cos(on*3.5)*{shake_win},0,ih-ih/zoom)"
     else:
-        z_expr = f"1.01+0.10*max(0,1-on/14)+0.06*min(1,on/{dur_frames})+0.08*{peak_bell}"
+        z_expr = f"1.00+0.06*max(0,1-on/12)+0.04*min(1,on/{dur_frames})+0.06*{peak_bell}"
         x_expr = "iw/2-(iw/zoom/2)"
         y_expr = "ih/2-(ih/zoom/2)"
 
     if is_wide_blur:
         graph = (
             f"[0:v]fps=30,split=2[bg_src][fg_src];"
-            f"[bg_src]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-            f"boxblur=24:6,eq=brightness=-0.06:saturation=1.25,setpts=PTS-STARTPTS[bg];"
-            f"[fg_src]crop=iw*0.92:ih:iw*0.04:0,scale=720:520:force_original_aspect_ratio=increase,crop=720:520,"
-            f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d=1:s=720x520:fps=30,"
-            f"scale=1080:780:flags=lanczos,setpts=PTS-STARTPTS,pad=1080:788:0:4:color={variant['border']}[fg];"
+            f"[bg_src]scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,"
+            f"boxblur=24:6,eq=brightness=-0.05:saturation=1.22,setpts=PTS-STARTPTS[bg];"
+            f"[fg_src]crop=iw*0.92:ih:iw*0.04:0,scale=1080:780:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:780,"
+            f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d=1:s=1080x780:fps=30,"
+            f"setpts=PTS-STARTPTS,pad=1080:788:0:4:color={variant['border']}[fg];"
             f"[bg][fg]overlay=0:(H-h)/2:shortest=1,setsar=1[base];"
         )
     else:
         face_crop_x = _build_smart_face_crop_expr(video_path, start, duration, focus_x)
+        # Native full 1080x1920 Lanczos crop + zoompan for crisp HD clarity!
         graph = (
-            f"[0:v]fps=30,scale=720:1280:force_original_aspect_ratio=increase,"
-            f"crop=720:1280:x='{face_crop_x}':y='(ih-1280)/2',"
-            f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d=1:s=720x1280:fps=30,"
-            f"scale=1080:1920:flags=lanczos,setpts=PTS-STARTPTS,setsar=1[base];"
+            f"[0:v]fps=30,scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop=1080:1920:x='{face_crop_x}':y='(ih-1920)/2',"
+            f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d=1:s=1080x1920:fps=30,"
+            f"setpts=PTS-STARTPTS,setsar=1[base];"
         )
 
     return graph, is_wide_blur
@@ -752,13 +756,12 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
 
     start = max(0.0, float(clip_data.get("start", 0)))
     end = float(clip_data.get("end", start + 18))
-    raw_duration = max(8.0, min(35.0, end - start))
+    raw_duration = max(8.0, min(28.0, end - start))
     duration = _snap_clean_duration(start, raw_duration, max_file_dur, word_timestamps)
 
     orig_start = int(float(clip_data.get("orig_start", start)))
     edit_type = re.sub(r"[^a-zA-Z0-9_]", "", str(clip_data.get("edit_type", "vlog"))).lower() or "vlog"
 
-    # Unique Visual Variant + Caption Style per clip!
     variant_id = int(clip_data.get("variant_id", (index + orig_start) % len(VISUAL_VARIANTS))) % len(VISUAL_VARIANTS)
     variant = VISUAL_VARIANTS[variant_id]
     caption_style = str(clip_data.get("caption_style", "hormozi_pop")).strip().lower()
@@ -806,15 +809,13 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         captions_on=(caption_lang != "off"),
     )
 
-    # Distinct visual grading + climax transformation per variant!
     if edit_type == "clean":
-        post_vf = ["eq=contrast=1.06:saturation=1.08", "unsharp=5:5:0.40:5:5:0.0"]
+        post_vf = ["eq=contrast=1.06:saturation=1.08", "unsharp=3:3:0.40:3:3:0.0"]
     else:
         post_vf = list(variant["base_grade"])
         if edit_type in ("roast", "aura", "aesthetic", "clash", "gaming", "drama", "funny"):
             post_vf.extend(variant["climax_grade"](peak_sec))
 
-    # Sleek Upper Translucent Ribbon behind 3.2s Hook Banner (never blocks center action!)
     if title_text and edit_type != "clean" and not is_wide_blur:
         post_vf.append(
             f"drawbox=x=0:y=175:w=iw:h=175:color={variant['ribbon']}:t=fill:enable='between(t,0.08,{hook_end:.2f})'"
@@ -891,13 +892,16 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
 
     fc = video_chain + "".join(audio_chains)
 
+    # Crystal HD 1080p export (High profile, CRF 18, crisp Lanczos, zero muddiness)
     cmd.extend([
         "-filter_complex", fc,
         "-map", "[v]",
         "-map", "[a]",
         "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", "20",
+        "-profile:v", "high",
+        "-pix_fmt", "yuv420p",
+        "-preset", "fast",
+        "-crf", "18",
         "-threads", "0",
         "-c:a", "aac",
         "-b:a", "192k",
@@ -906,10 +910,10 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     ])
 
     print(
-        f"[MAG73 Pro Editor] Rendering {output_file} | Style={edit_type} | Variant={variant['name']} | "
-        f"CapStyle={caption_style} | Peak={peak_sec:.2f}s | Stamp='{impact_stamp}'"
+        f"[MAG73 Pro HD Editor] Rendering {output_file} ({in_w}x{in_h} -> 1080x1920 CRF18) | "
+        f"Style={edit_type} | Variant={variant['name']} | CapStyle={caption_style} | Peak={peak_sec:.2f}s"
     )
-    subprocess.run(cmd, check=True, timeout=200)
+    subprocess.run(cmd, check=True, timeout=240)
 
     os.makedirs("output_clips", exist_ok=True)
     cover_path = os.path.join("output_clips", output_file.replace(".mp4", ".jpg"))
@@ -917,7 +921,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     subprocess.run(
         [
             "ffmpeg", "-y", "-ss", f"{thumb_sec:.2f}",
-            "-i", output_file, "-frames:v", "1", "-update", "1", "-q:v", "3", cover_path,
+            "-i", output_file, "-frames:v", "1", "-update", "1", "-q:v", "2", cover_path,
         ],
         check=False,
         timeout=20,
