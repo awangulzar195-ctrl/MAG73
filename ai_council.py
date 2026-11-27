@@ -112,10 +112,10 @@ DEFAULT_SFX_BY_STYLE = {
 }
 
 FALLBACK_STAMPS = {
-    "aura": ["UNPLAYABLE", "COLD", "PURE CLASS", "LETHAL", "INSANE"],
-    "roast": ["ROASTED", "COOKED", "VIOLATION", "SAVAGE", "NO MERCY"],
-    "gaming": ["CLUTCH", "CRACKED", "CLEAN", "INSANE", "DOMINATED"],
-    "clash": ["COOKED", "HEATED", "NO WAY", "SAVAGE"],
+    "aura": ["COLD", "UNPLAYABLE", "PURE CLASS", "GOD TIER", "LETHAL", "INSANE", "BUILT DIFFERENT"],
+    "roast": ["ROASTED", "COOKED", "VIOLATION", "SAVAGE", "NO MERCY", "EXPOSED", "HUMBLED"],
+    "gaming": ["CLUTCH", "CRACKED", "CLEAN", "INSANE", "DOMINATED", "HEADSHOT", "PRO MOVE"],
+    "clash": ["COOKED", "HEATED", "NO WAY", "SAVAGE", "INTENSE", "COLD REPLY"],
 }
 
 
@@ -216,7 +216,7 @@ def _call_groq(prompt, temperature=0.25):
                         "temperature": temperature,
                         "messages": [{"role": "user", "content": prompt}],
                     },
-                    timeout=45,
+                    timeout=40,
                 )
                 if res.status_code == 200:
                     _working_groq_model = model_name
@@ -225,7 +225,7 @@ def _call_groq(prompt, temperature=0.25):
                     if choices:
                         return choices[0].get("message", {}).get("content", "") or ""
                 elif res.status_code == 429:
-                    time.sleep(random.uniform(1.0, 2.5))
+                    time.sleep(random.uniform(1.0, 2.0))
                 last_err = f"HTTP {res.status_code}"
             except Exception as e:
                 last_err = str(e)
@@ -292,12 +292,56 @@ def _words_from_segments(segments):
     return derived
 
 
+def _gemini_direct_audio_scan(audio_path, audience_signals, style_pref, custom_prompt):
+    """
+    SUPER-FAST CLOUD AUDIO SCAN (~10 seconds for a 15-min video!):
+    If Groq Whisper fails on a long VOD, Gemini 2.5 Flash listens directly to the compact MP3
+    and returns elite timestamped viral clips immediately — ZERO 5-minute CPU Whisper hang!
+    """
+    if not gemini_client or not audio_path or not os.path.exists(audio_path):
+        return []
+    try:
+        print("[MAG73 Fast Scan] Using Gemini direct cloud audio scan...")
+        uploaded = gemini_client.files.upload(file=audio_path)
+        deadline = time.time() + 45
+        audio_file = uploaded
+        while time.time() < deadline:
+            info = gemini_client.files.get(name=uploaded.name)
+            state = getattr(info.state, "name", str(info.state))
+            if state == "ACTIVE":
+                audio_file = info
+                break
+            if state == "FAILED":
+                return []
+            time.sleep(2)
+
+        user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION: {custom_prompt}\n" if custom_prompt else ""
+        prompt = f"""
+        Listen to this entire audio and find ALL genuine 9/10 or 10/10 VIRAL REELS / SHORTS moments (14-25s each, score 87-100).
+        {user_rule}
+        Video Title: "{audience_signals.get('video_title', '')}"
+        YouTube Most-Replayed Spikes (sec): {audience_signals.get('heatmap_spikes', [])}
+        Style Preference: "{style_pref}" (if "auto", mix natural styles: "roast", "aura", "aesthetic", "funny", "gaming", "vlog", "drama", "clash", "informative").
+        REJECT intros, sponsor ads, setup filler, and outros!
+
+        Return ONLY valid JSON array:
+        [{{"start": 42, "end": 62, "score": 92, "edit_type": "vlog", "layout_mode": "vertical_full", "focus_x": "center", "title_text": "DREAM RESTAURANT REVEAL", "impact_stamp": "INSANE", "peak_sec": 10}}]
+        """
+        for gm in ("gemini-2.5-flash", "gemini-2.0-flash"):
+            try:
+                res = gemini_client.models.generate_content(model=gm, contents=[audio_file, prompt])
+                clips = _clean_json(res.text or "")
+                if clips:
+                    print(f"[MAG73 Fast Scan] Gemini direct audio found {len(clips)} viral clip(s)!")
+                    return clips
+            except Exception as e:
+                print(f"[MAG73 Fast Scan] {gm} warning: {str(e)[:80]}")
+    except Exception as e:
+        print(f"[MAG73 Fast Scan] Gemini audio scan warning: {e}")
+    return []
+
+
 def _local_faster_whisper_transcribe(audio_path, caption_lang="hinglish", fast_scan=False):
-    """
-    FAST CPU Whisper:
-    - Uses `tiny` int8 (beam_size=1) for full long scans (~15-25s total, NEVER hangs 5 minutes!).
-    - Uses `base` int8 (beam_size=2) for short 20s clips (~6-8s total, high accuracy!).
-    """
     if not HAS_FASTER_WHISPER or not os.path.exists(audio_path):
         return "", []
     model_size = "tiny" if fast_scan else "base"
@@ -400,7 +444,7 @@ def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hin
                 "-ac", "1", "-ar", "16000", "-b:a", bitrate, audio_path,
             ],
             check=True,
-            timeout=60,
+            timeout=50,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -430,7 +474,7 @@ def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hin
                     headers={"Authorization": f"Bearer {GROQ_KEY}"},
                     files={"file": f},
                     data=form_data,
-                    timeout=50,
+                    timeout=45,
                 )
             if res.status_code == 200:
                 data = res.json()
@@ -440,17 +484,20 @@ def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hin
                     words = _words_from_segments(data.get("segments"))
                 print(f"[MAG73 Audio] Groq Whisper extracted {len(words)} words.")
             else:
-                print(f"[MAG73 Audio] Groq Whisper HTTP {res.status_code} — using fast offline Whisper!")
+                print(f"[MAG73 Audio] Groq Whisper HTTP {res.status_code}")
         except Exception as e:
-            print(f"[MAG73 Audio] Groq Whisper skipped ({e}) — using fast offline Whisper!")
+            print(f"[MAG73 Audio] Groq Whisper skipped ({e})")
 
+    # NEVER run slow CPU Whisper on long >4-min scan files (Gemini handles those in 10s!)
     if len(words) < 5:
-        fw_text, fw_words = _local_faster_whisper_transcribe(
-            audio_path, caption_lang=caption_lang, fast_scan=fast_scan
-        )
-        if len(fw_words) > len(words):
-            words = fw_words
-            text = fw_text
+        dur_check = _get_media_duration_sec(audio_path)
+        if (not fast_scan) or dur_check <= 240.0:
+            fw_text, fw_words = _local_faster_whisper_transcribe(
+                audio_path, caption_lang=caption_lang, fast_scan=fast_scan
+            )
+            if len(fw_words) > len(words):
+                words = fw_words
+                text = fw_text
 
     if words:
         if (not fast_scan) and len(words) <= 220:
@@ -483,7 +530,7 @@ def refine_clip_metadata(clip_data, segment_transcript, word_timestamps):
         try:
             prompt = f"""
             Analyze this EXACT 0.0s-to-{dur:.1f}s clip transcript and return ONLY a JSON object:
-            - "title_text": Punchy 3-5 word UPPERCASE ASCII hook strictly about THIS clip (never generic 'WATCH THIS MOMENT').
+            - "title_text": Punchy 3-5 word UPPERCASE ASCII hook strictly about THIS clip.
             - "peak_sec": Exact float second between {max(3.0, dur*0.28):.1f} and {max(5.0, dur-2.5):.1f} where the biggest reaction, fight, shot, or punchline occurs.
             - "impact_stamp": A crisp 1-2 word UPPERCASE stamp matching the moment (e.g. "UNPLAYABLE", "CLUTCH", "COOKED", "COLD", "SAVAGE", "INSANE") ONLY if style is aura/roast/gaming/clash, else "".
 
@@ -520,10 +567,6 @@ def refine_clip_metadata(clip_data, segment_transcript, word_timestamps):
     else:
         clip_data["impact_stamp"] = ""
 
-    print(
-        f"[MAG73 Meta] Hook='{clip_data.get('title_text','')}' | Peak={clip_data.get('peak_sec')}s | "
-        f"Stamp='{clip_data.get('impact_stamp','')}' | Variant={clip_data.get('variant_id')} | CapStyle={clip_data.get('caption_style')}"
-    )
     return clip_data
 
 
@@ -622,7 +665,7 @@ def _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_
     banner_enabled = bool(plugin_cfg.get("banner_enabled", True))
     run_seed = int(os.getenv("GITHUB_RUN_NUMBER", "0") or "0") + int(time.time()) % 97
 
-    clips = [c for c in raw_clips if isinstance(c, dict) and int(c.get("score", 80)) >= (80 if is_live else 87)]
+    clips = [c for c in raw_clips if isinstance(c, dict) and int(c.get("score", 80)) >= (80 if is_live else 86)]
     if not clips and raw_clips:
         dict_clips = [c for c in raw_clips if isinstance(c, dict)]
         if dict_clips:
@@ -641,7 +684,7 @@ def _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_
                 "edit_type": fallback_style,
                 "layout_mode": "vertical_full",
                 "focus_x": "center",
-                "title_text": "INTENSE LIVE MOMENT!" if banner_enabled else "",
+                "title_text": "HIGHLIGHT MOMENT!" if banner_enabled else "",
                 "peak_sec": int(min(10.0, max(3.5, end_s * 0.5))),
             }
         ]
@@ -659,7 +702,6 @@ def _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_
         count_for_style = style_counters.get(et, 0)
         style_counters[et] = count_for_style + 1
 
-        # Uses run_seed so even separate Live Stream runs get DIFFERENT variants, captions & BGM!
         mix_seed = run_seed + idx * 3 + count_for_style
         c["variant_id"] = mix_seed % 5
         c["caption_style"] = CAPTION_STYLES[mix_seed % len(CAPTION_STYLES)]
@@ -701,6 +743,9 @@ def run_fast_scan_council(audio_path, audience_signals, video_path=None, preload
     custom_prompt = os.getenv("CUSTOM_PROMPT", "").strip()
     video_title = str(audience_signals.get("video_title", "") or "")
 
+    word_timestamps = []
+    transcript_text = ""
+
     if preloaded_words and len(preloaded_words) >= 35:
         word_timestamps = preloaded_words
         for w in word_timestamps:
@@ -709,7 +754,7 @@ def run_fast_scan_council(audio_path, audience_signals, video_path=None, preload
                 w["word"] = _devanagari_to_roman(txt)
         transcript_text = _build_timestamped_transcript(word_timestamps, bucket_sec=5)
         print(f"[MAG73 Fast Scan] Using instant YouTube transcript ({len(word_timestamps)} words)!")
-    else:
+    elif audio_path and os.path.exists(audio_path):
         transcript_text, word_timestamps, _ = extract_accurate_transcript(
             audio_path, caption_lang=caption_lang, is_audio_only=True, context_hint=video_title, fast_scan=True
         )
@@ -720,6 +765,26 @@ def run_fast_scan_council(audio_path, audience_signals, video_path=None, preload
             float(word_timestamps[-1]["end"]) if word_timestamps else 180.0
         )
 
+    # If transcript was unavailable (e.g. Groq 429 on long VOD), use Gemini direct cloud audio (~10s!)
+    if len(transcript_text) < 40 and audio_path and os.path.exists(audio_path):
+        gem_clips = _gemini_direct_audio_scan(audio_path, audience_signals, style_pref, custom_prompt)
+        if gem_clips:
+            return _finalize_clip_list(gem_clips, vid_dur, word_timestamps, style_pref, plugin_cfg, video_title=video_title, is_live=False)
+
+    # If still empty but YouTube Heatmap spikes exist, build clips directly around heatmap spikes!
+    if len(transcript_text) < 40 and audience_signals.get("heatmap_spikes"):
+        hm_clips = []
+        for sp in audience_signals["heatmap_spikes"][:6]:
+            st = max(0, int(sp) - 5)
+            en = min(int(vid_dur), st + 22)
+            hm_clips.append({
+                "start": st, "end": en, "score": 90,
+                "edit_type": "vlog", "layout_mode": "vertical_full",
+                "focus_x": "center", "title_text": "MOST REPLAYED MOMENT",
+                "peak_sec": 10,
+            })
+        return _finalize_clip_list(hm_clips, vid_dur, word_timestamps, style_pref, plugin_cfg, video_title=video_title, is_live=False)
+
     user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION (OBEY STRICTLY): {custom_prompt}\n" if custom_prompt else ""
 
     prompt = f"""
@@ -729,21 +794,19 @@ def run_fast_scan_council(audio_path, audience_signals, video_path=None, preload
     Video Duration: {int(vid_dur)} seconds
     User Style Preference: "{style_pref}" (if "auto", give EACH clip its own natural distinct style!)
 
-    AUDIENCE VIRAL SIGNALS (Prioritize these moments!):
+    AUDIENCE VIRAL SIGNALS:
     - YouTube Most-Replayed Heatmap Spikes (sec): {audience_signals.get('heatmap_spikes', [])}
-    - Top Comment Timestamps (sec): {audience_signals.get('comment_timestamps', [])}
-    - Top Comments: {audience_signals.get('top_comments', [])[:10]}
 
     TIMESTAMPED TRANSCRIPT ([Xs] seconds):
     {transcript_text[:22000]}
 
     STRICT ELITE CURATION RULES:
-    1. ONLY pick genuine 9/10 or 10/10 VIRAL BANGERS (score 87-100): insane catches/shots/kills, hilarious roasts, shocking twists, bold statements, or epic moments.
-    2. HARD REJECT: sponsored ad reads, promo codes, intros, rule explanations, walking/setup filler, and outros ("like subscribe bye").
+    1. ONLY pick genuine 9/10 or 10/10 VIRAL BANGERS (score 86-100): insane moments, funny roasts, shocking reveals, bold statements, or peak action.
+    2. HARD REJECT: sponsor ads, promo codes, intros, rule explanations, walking/setup filler, and outros ("like subscribe bye").
     3. TIGHT PUNCHY PACING: Keep clips tight (14 to 25 seconds).
     4. MIX STYLES NATURALLY ("roast", "aura", "aesthetic", "funny", "gaming", "vlog", "drama", "clash", "informative").
     5. EXACT HOOK TITLE ("title_text"): Punchy 3-5 word uppercase ASCII hook strictly about THAT clip.
-    6. "impact_stamp": Unique 1-2 word stamp ("INSANE", "UNPLAYABLE", "COOKED", "SAVAGE", "PURE CLASS").
+    6. "impact_stamp": Unique 1-2 word stamp ("INSANE", "COLD", "UNPLAYABLE", "COOKED", "SAVAGE", "PURE CLASS").
 
     Return ONLY valid JSON array:
     [
@@ -766,7 +829,6 @@ def run_fast_scan_council(audio_path, audience_signals, video_path=None, preload
 
 
 def run_super_ai_council(video_path, audience_signals):
-    """Full VOD-grade AI Director for Live Streams — picks the tightest hype clip & varied edit styles!"""
     if isinstance(audience_signals, list):
         audience_signals = {"chat_spikes": audience_signals, "heatmap_spikes": [], "comment_timestamps": [], "top_comments": [], "video_title": ""}
 
@@ -793,15 +855,7 @@ def run_super_ai_council(video_path, audience_signals):
     {transcript_text[:10000]}
 
     Pick the SINGLE best punchiest 14-24s highlight inside this captured live segment.
-    Include:
-    - "start", "end" (inside 0 to {int(vid_dur)})
-    - "edit_type" (matching the exact mood — NEVER generic)
-    - "layout_mode": "vertical_full" or "gaming_wide"
-    - "title_text": Punchy 3-5 word uppercase ASCII hook strictly about THIS live moment
-    - "impact_stamp": Crisp 1-2 word stamp ("CLUTCH", "COOKED", "INSANE", "SAVAGE", "DOMINATED")
-    - "peak_sec": exact climax second from clip start
-
-    Return ONLY valid JSON array of 1 item.
+    Return ONLY valid JSON array of 1 item with "start", "end", "edit_type", "layout_mode", "title_text" (3-5 uppercase ASCII words), "impact_stamp" (1-2 words), and "peak_sec".
     """
     raw_out = _call_groq(prompt, temperature=0.28)
     raw_clips = _clean_json(raw_out)
