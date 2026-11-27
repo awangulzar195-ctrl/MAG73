@@ -37,8 +37,7 @@ def _base_ytdlp_cmd(use_cookies=True):
     return cmd
 
 
-def _run_ytdlp_with_fallback(base_args, url, timeout_sec=85):
-    """Tries cookie strategies first, then cookieless mobile/TV clients so ios/android_vr are never skipped."""
+def _run_ytdlp_with_fallback(base_args, url, timeout_sec=80):
     strategies = [
         (True, []),
         (True, ["--extractor-args", "youtube:player_client=web,mweb"]),
@@ -63,11 +62,44 @@ def _run_ytdlp_with_fallback(base_args, url, timeout_sec=85):
     return False, last_stderr
 
 
+def _parse_json3_subtitles(pattern="scan_meta*.json3"):
+    """Parses YouTube json3 subtitles in <1s so VOD Scan doesn't need slow CPU Whisper!"""
+    files = sorted(glob.glob(pattern))
+    if not files:
+        return []
+    # Prefer English/Hinglish/Hindi track if multiple exist
+    chosen = files[0]
+    for f in files:
+        fl = f.lower()
+        if ".en." in fl or ".hi." in fl or ".en-in." in fl:
+            chosen = f
+            break
+    words = []
+    try:
+        with open(chosen, "r", encoding="utf-8", errors="ignore") as fp:
+            data = json.load(fp)
+        for ev in (data.get("events") or []):
+            t_start = float(ev.get("tStartMs", 0)) / 1000.0
+            d_dur = float(ev.get("dDurationMs", 1500)) / 1000.0
+            segs = ev.get("segs") or []
+            if not segs:
+                continue
+            seg_text = "".join(str(s.get("utf8", "")) for s in segs).replace("\n", " ").strip()
+            toks = [t for t in seg_text.split() if t.strip()]
+            if not toks:
+                continue
+            step = max(0.08, min(0.8, d_dur / len(toks)))
+            for i, tok in enumerate(toks):
+                ws = round(t_start + i * step, 2)
+                we = round(ws + step, 2)
+                words.append({"word": tok, "start": ws, "end": we})
+        print(f"[MAG73 Fast Scan] Parsed {len(words)} instant YouTube subtitle words from {os.path.basename(chosen)}!")
+    except Exception as e:
+        print(f"[MAG73 Fast Scan] Subtitle parse skipped: {e}")
+    return words
+
+
 def _capture_live_hls_now(source_url, out_path="source_video.mp4", duration_sec=32):
-    """
-    Captures the CURRENT live stream moment reliably via yt-dlp -g + FFmpeg HLS recording.
-    Works even when --live-from-start or --download-sections fails on YouTube Live!
-    """
     ok, raw_urls = _run_ytdlp_with_fallback(
         ["-f", "best[height<=1080]/bestvideo[height<=1080]+bestaudio/best", "-g"],
         source_url,
@@ -88,7 +120,7 @@ def _capture_live_hls_now(source_url, out_path="source_video.mp4", duration_sec=
 
     cmd.extend([
         "-t", str(duration_sec),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "17",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "16",
         "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart",
         out_path,
@@ -143,7 +175,7 @@ def _extract_signals_from_info(pattern="*info.json"):
         heatmap = data.get("heatmap") or []
         if isinstance(heatmap, list) and heatmap:
             ranked = sorted(
-                [h for h in heatmap if isinstance(h, dict) and float(h.get("value", 0)) >= 0.60],
+                [h for h in heatmap if isinstance(h, dict) and float(h.get("value", 0)) >= 0.58],
                 key=lambda x: float(x.get("value", 0)),
                 reverse=True,
             )
@@ -160,7 +192,7 @@ def _extract_signals_from_info(pattern="*info.json"):
         comments = data.get("comments") or []
         ts_set = set()
         top_texts = []
-        for c in comments[:60]:
+        for c in comments[:50]:
             txt = str(c.get("text", "")).strip()
             if not txt:
                 continue
@@ -179,17 +211,23 @@ def _extract_signals_from_info(pattern="*info.json"):
 
 
 def fetch_scan_media(source_url, is_upload=False):
-    audio_path = "scan_audio.mp3"
-    for f in glob.glob("scan_audio*"):
+    """
+    INSTANT SCAN ENGINE (~20-35s total):
+    1. For YouTube VOD: fetches instant json3 subtitles + Most-Replayed Heatmap + Comments (no video/audio download needed!).
+    2. Only downloads tiny 32k audio if subtitles are unavailable.
+    Returns: (video_path_or_None, audio_path_or_None, signals, preloaded_words)
+    """
+    for f in glob.glob("scan_audio*") + glob.glob("scan_meta*"):
         try:
             os.remove(f)
         except Exception:
             pass
 
     if is_upload:
+        audio_path = "scan_audio.mp3"
         vpath = _download_github_asset(source_url, "source_video.mp4")
         subprocess.run(
-            ["ffmpeg", "-y", "-i", vpath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k", audio_path],
+            ["ffmpeg", "-y", "-i", vpath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", audio_path],
             check=True,
             timeout=60,
             stdout=subprocess.DEVNULL,
@@ -198,33 +236,54 @@ def fetch_scan_media(source_url, is_upload=False):
         return vpath, audio_path, {
             "chat_spikes": [], "heatmap_spikes": [], "comment_timestamps": [],
             "top_comments": [], "video_title": "", "duration": 0.0,
-        }
+        }, []
 
-    print("[MAG73 Fast Scan] Downloading lightweight audio + YouTube heatmap...")
-    args = [
-        "-f", "worstaudio[abr>=48]/bestaudio[abr<=96]/bestaudio/worst",
-        "-x", "--audio-format", "mp3", "--audio-quality", "7",
+    # Step A: Ultra-fast metadata + subtitles + heatmap (ZERO media download!)
+    print("[MAG73 Fast Scan] Fetching instant YouTube subtitles + Most-Replayed Heatmap...")
+    meta_args = [
+        "--skip-download",
         "--write-info-json",
+        "--write-auto-sub",
+        "--write-sub",
+        "--sub-lang", "en,hi,en-IN,en-orig",
+        "--sub-format", "json3",
         "--get-comments",
-        "--extractor-args", "youtube:max_comments=40,all,0,0",
+        "--extractor-args", "youtube:max_comments=35,all,0,0",
+        "-o", "scan_meta.%(ext)s",
+    ]
+    ok, _ = _run_ytdlp_with_fallback(meta_args, source_url, timeout_sec=45)
+    if not ok:
+        meta_simple = [
+            "--skip-download",
+            "--write-info-json",
+            "--write-auto-sub",
+            "--write-sub",
+            "--sub-lang", "en,hi,en-IN,en-orig",
+            "--sub-format", "json3",
+            "-o", "scan_meta.%(ext)s",
+        ]
+        _run_ytdlp_with_fallback(meta_simple, source_url, timeout_sec=35)
+
+    signals = _extract_signals_from_info("scan_meta*.info.json")
+    sub_words = _parse_json3_subtitles("scan_meta*.json3")
+    if len(sub_words) >= 35:
+        print(f"[MAG73 Fast Scan] Instant subtitle scan ready ({len(sub_words)} words) — skipping audio download!")
+        return None, None, signals, sub_words
+
+    # Step B: Fallback to tiny audio download ONLY if no YouTube subtitles existed
+    audio_path = "scan_audio.mp3"
+    print("[MAG73 Fast Scan] No subtitles found — downloading compact audio...")
+    args_audio = [
+        "-f", "worstaudio[abr>=32]/bestaudio[abr<=64]/bestaudio/worst",
+        "-x", "--audio-format", "mp3", "--audio-quality", "8",
         "-o", "scan_audio.%(ext)s",
     ]
-    ok, err = _run_ytdlp_with_fallback(args, source_url, timeout_sec=75)
-    if not ok or not os.path.exists(audio_path):
-        args_fast = [
-            "-f", "bestaudio/worst",
-            "-x", "--audio-format", "mp3", "--audio-quality", "7",
-            "--write-info-json",
-            "-o", "scan_audio.%(ext)s",
-        ]
-        ok, err = _run_ytdlp_with_fallback(args_fast, source_url, timeout_sec=65)
-
+    ok, err = _run_ytdlp_with_fallback(args_audio, source_url, timeout_sec=65)
     if not ok or not os.path.exists(audio_path):
         raise RuntimeError(f"Fast scan audio fetch failed: {err[-220:]}")
 
-    signals = _extract_signals_from_info("scan_audio*.info.json")
-    print(f"[MAG73 Fast Scan] Audio ready ({os.path.getsize(audio_path)//1024} KB).")
-    return None, audio_path, signals
+    print(f"[MAG73 Fast Scan] Compact audio ready ({os.path.getsize(audio_path)//1024} KB).")
+    return None, audio_path, signals, []
 
 
 def fetch_media(source_url, mode="vod"):
@@ -237,12 +296,17 @@ def fetch_media(source_url, mode="vod"):
 
     if mode == "upload":
         _download_github_asset(source_url, out_path)
-        return out_path, {"chat_spikes": [], "heatmap_spikes": [], "comment_timestamps": [], "top_comments": []}
+        return out_path, {"chat_spikes": [], "heatmap_spikes": [], "comment_timestamps": [], "top_comments": [], "video_title": ""}
 
     if mode == "live":
+        # Grab stream title quickly if possible
+        live_title = ""
+        ok_t, title_out = _run_ytdlp_with_fallback(["--skip-download", "--print", "title"], source_url, timeout_sec=20)
+        if ok_t and title_out:
+            live_title = title_out.splitlines()[0].strip()
+
         ok, err = _capture_live_hls_now(source_url, out_path=out_path, duration_sec=32)
         if not ok or not os.path.exists(out_path):
-            # Secondary fallback: if the live stream just ended and became a VOD
             args_vod = [
                 "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best",
                 "--merge-output-format", "mp4",
@@ -252,9 +316,8 @@ def fetch_media(source_url, mode="vod"):
             ok, err = _run_ytdlp_with_fallback(args_vod, source_url, timeout_sec=75)
         if not ok or not os.path.exists(out_path):
             raise RuntimeError(f"Live capture failed (stream may be ended/restricted): {err[-220:]}")
-        return out_path, {"chat_spikes": [15], "heatmap_spikes": [], "comment_timestamps": [], "top_comments": []}
+        return out_path, {"chat_spikes": [15], "heatmap_spikes": [], "comment_timestamps": [], "top_comments": [], "video_title": live_title}
 
-    # Full 1080p HD VOD download
     args_simple = [
         "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
         "--merge-output-format", "mp4",
@@ -270,7 +333,6 @@ def fetch_media(source_url, mode="vod"):
 
 
 def fetch_clip_segment(source_url, start_sec, end_sec, mode="vod"):
-    """Downloads FULL 1080p HD segment so vertical 9:16 crop stays razor sharp!"""
     mode = (mode or "vod").strip().lower()
     seg_path = "clip_segment.mp4"
     if os.path.exists(seg_path):
@@ -294,7 +356,6 @@ def fetch_clip_segment(source_url, start_sec, end_sec, mode="vod"):
         return seg_path, pad_start
 
     section_arg = f"*{pad_start:.2f}-{pad_end:.2f}"
-    # 1080p HD priority for crisp vertical reframing!
     args_hd = [
         "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
         "--merge-output-format", "mp4",
