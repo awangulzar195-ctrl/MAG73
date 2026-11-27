@@ -21,7 +21,7 @@ PRO_FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/f
 # PRO CINEMA HDR CC VARIANTS:
 # - Lifted shadow curves (ZERO crushed pitch-black faces!)
 # - Crisp 3x3 micro-sharpening (sharp 1080p HD look, zero muddy artifacts)
-# - Smart 2.0-second B&W Silver Burst ONLY on obsidian_bw climax (snaps back to crisp HDR color!)
+# - Smart 2.0-second B&W Silver Burst ONLY on obsidian_silver_burst climax (snaps back to crisp HDR color!)
 VISUAL_VARIANTS = [
     {
         "name": "obsidian_silver_burst",
@@ -100,9 +100,67 @@ VISUAL_VARIANTS = [
     },
 ]
 
+# 130+ High-Energy Words that pop bigger with accent color in captions!
 HYPE_WORDS = {
-    "SIX", "FOUR", "OUT", "CATCH", "OMG", "WTF", "BRO", "BHAI", "ROAST", "CLUTCH",
-    "YORKER", "INSANE", "CRAZY", "BOOM", "DEAD", "WIN", "AURA", "LEGEND", "COLD", "100", "200",
+    # Aura / Sigma / Mindset
+    "INSANE", "COLD", "AURA", "LEGEND", "GOAT", "KING", "BOSS", "BEAST", "MONSTER", "SAVAGE",
+    "LETHAL", "BRUTAL", "RUTHLESS", "FEARLESS", "UNREAL", "UNSTOPPABLE", "UNPLAYABLE", "DOMINANCE",
+    "ELITE", "PRIME", "PEAK", "SUPREME", "ICONIC", "ALPHA", "SIGMA", "MENACE", "DEMON", "GOD",
+    "ICE", "FROZEN", "SILENCE", "RESPECT", "MINDSET", "LEGACY", "CROWN", "ROYAL", "IMMORTAL",
+    # Roast / Comedy / Reactions
+    "COOKED", "ROAST", "ROASTED", "VIOLATION", "EMOTIONAL", "DAMAGE", "EXPOSED", "DESTROYED",
+    "HUMBLED", "OWNED", "RATIO", "CLOWN", "FAKE", "FRAUD", "CAUGHT", "SHOCKING", "SHOCKED",
+    "CRAZY", "WILD", "MAD", "INSANITY", "CHAOS", "DISASTER", "FAIL", "BRUH", "OMG", "WTF",
+    "NO", "WAIT", "STOP", "WHAT", "HOW", "BRO", "GUYS", "CHAT", "DEAD", "RIP", "DONE", "OVER",
+    # Gaming / Esports / Stream
+    "CLUTCH", "HEADSHOT", "ONETAP", "ACE", "SQUAD", "WIPE", "KNOCK", "FINISH", "REVIVE", "ZONE",
+    "HACKER", "AIMBOT", "CRACKED", "CLEAN", "FLICK", "SNIPE", "RUSH", "PUSH", "CAMP", "BOT",
+    "NOOB", "PRO", "OP", "GG", "WIN", "CHICKEN", "BOOYAH", "VICTORY", "BOOM", "BANG", "BOOM",
+    # Cricket / Sports
+    "SIX", "FOUR", "OUT", "BOWLED", "CATCH", "WICKET", "YORKER", "BOUNCER", "PACE", "SPEED",
+    "CENTURY", "FIFTY", "RECORD", "CHAMPION", "FINAL", "MATCH", "SHOT", "CLASSIC", "PURE",
+    # Hinglish / Indian Viral Words
+    "BHAI", "AREY", "KHATAM", "TATA", "BYE", "BAAP", "LEVEL", "SCENE", "MAZA", "PAISA", "CRORE",
+    "LAKH", "GAJAB", "ZABARDAST", "KHATARNAK", "AAG", "FIRE", "JHAKAAS", "OP", "SYSTEM", "SYSTUM",
+    # Numbers
+    "1", "4", "6", "50", "100", "150", "160", "200", "1000", "MILLION", "CRORE",
+}
+
+# 115+ Dynamic Viral Impact Stamps (never repeats the same stamp!)
+STAMP_POOLS = {
+    "aura": [
+        "COLD", "ICE COLD", "UNPLAYABLE", "PURE CLASS", "GOD TIER", "LETHAL", "UNREAL",
+        "BUILT DIFFERENT", "MAIN CHARACTER", "FINAL BOSS", "PURE AURA", "SILENCED",
+        "FEARLESS", "PEAK FORM", "RUTHLESS", "UNTOUCHABLE", "RESPECT", "ICONIC",
+        "LEGACY", "PRIME MODE", "TOO EASY", "EFFORTLESS", "ELITE", "SUPREME",
+        "ICE IN VEINS", "DIFFERENT BREED", "LEVELS", "UNSTOPPABLE", "ROYAL", "CINEMA",
+    ],
+    "roast": [
+        "ROASTED", "COOKED", "VIOLATION", "SAVAGE", "NO MERCY", "DESTROYED", "EXPOSED",
+        "HUMBLED", "OWNED", "BODYBAG", "GAME OVER", "CRITICAL HIT", "TOO BRUTAL",
+        "COOKED HIM", "NO RECOVERY", "DONE OUT", "VIOLATED", "FLAMED", "EMOTIONAL",
+        "CHILL BRO", "CAUGHT IN 4K", "CHECKMATE", "OUTPLAYED", "KHATAM", "PACKED UP",
+    ],
+    "gaming": [
+        "CLUTCH", "CRACKED", "INSANE", "CLEAN", "DOMINATED", "HEADSHOT", "ONETAP",
+        "SQUAD WIPE", "HACKER AIM", "PRO MOVE", "NO SCOPE", "FLICK SHOT", "GOD MODE",
+        "DIFFED", "PURE SKILL", "INSANE IQ", "UNREAL AIM", "WIPED OUT", "OUTPLAYED",
+        "LASERED", "DEMO MODE", "MVP", "CLUTCH GOD", "UNSTOPPABLE", "ZERO CHANCE",
+    ],
+    "clash": [
+        "HEATED", "COOKED", "NO WAY", "SAVAGE", "WAR MODE", "INTENSE", "CONFRONTED",
+        "FACE OFF", "FIRE", "RAW TRUTH", "NO FILTER", "EXPLODED", "CHAOS", "SHATTERED",
+        "COLD REPLY", "SHUT DOWN", "BIG CLASH", "REAL TALK", "SPICY", "TENSION",
+    ],
+    "funny": [
+        "WAIT WHAT", "NO WAY", "DEAD", "TOO FUNNY", "BRO WHAT", "CHAOS", "PLOT TWIST",
+        "CAUGHT", "BRUH", "UNEXPECTED", "OUT OF POCKET", "COMEDY GOLD", "LOST IT",
+        "PURE CHAOS", "WHAT A FAIL",
+    ],
+    "drama": [
+        "SHOCKING", "PLOT TWIST", "INTENSE", "EXPOSED", "NO WAY", "BIG REVEAL",
+        "HEATED", "REAL DRAMA", "UNREAL", "TENSION",
+    ],
 }
 
 
@@ -358,7 +416,7 @@ def _snap_clean_duration(start, duration, max_file_dur, words):
     return min(duration, avail_max)
 
 
-def _analyze_audio_and_sync_peak(video_path, start, duration, ai_peak_sec=None):
+def _analyze_audio_and_sync_peak(video_path, start, duration, ai_peak_sec=None, is_live=False):
     fallback_peak = float(ai_peak_sec) if (ai_peak_sec and 2.5 <= float(ai_peak_sec) <= duration - 2.0) else max(3.5, duration * 0.50)
     try:
         raw = subprocess.check_output(
@@ -385,7 +443,9 @@ def _analyze_audio_and_sync_peak(video_path, start, duration, ai_peak_sec=None):
 
         sorted_rms = sorted(rms_list)
         p25_floor = sorted_rms[len(sorted_rms) // 4]
-        has_existing_bgm = p25_floor > 0.042
+        # Tuned threshold so game ambient sound on Live Streams doesn't block sidechain-ducked BGM!
+        bgm_thresh = 0.085 if is_live else 0.072
+        has_existing_bgm = p25_floor > bgm_thresh
 
         if ai_peak_sec and 2.5 <= float(ai_peak_sec) <= duration - 2.0:
             win_s = max(2.5, float(ai_peak_sec) - 1.4)
@@ -404,7 +464,7 @@ def _analyze_audio_and_sync_peak(video_path, start, duration, ai_peak_sec=None):
                 peak_idx = idx
 
         synced_peak = round(peak_idx * 0.20, 2)
-        print(f"[MAG73 DSP] Synced climax peak={synced_peak:.2f}s (AI hint={ai_peak_sec}) | ExistingBGM={has_existing_bgm}")
+        print(f"[MAG73 DSP] Synced climax peak={synced_peak:.2f}s (AI hint={ai_peak_sec}) | Floor={p25_floor:.3f} | ExistingBGM={has_existing_bgm}")
         return synced_peak, has_existing_bgm
     except Exception as e:
         print(f"[MAG73 DSP] Audio profile fallback: {e}")
@@ -581,7 +641,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         )
         lines.append(f"Dialogue: 2,{_format_ass_time(0.08)},{_format_ass_time(hook_end)},Hook,,0,0,0,,{anim_hook}")
 
-    if impact_stamp and edit_type in ("roast", "aura", "clash", "gaming"):
+    if impact_stamp and edit_type in ("roast", "aura", "clash", "gaming", "funny", "drama"):
         st_s = peak_sec + 0.04
         st_e = min(clip_end - clip_start - 0.25, st_s + 1.05)
         if st_e > st_s + 0.35:
@@ -731,7 +791,6 @@ def _build_layout_and_motion(video_path, start, in_w, in_h, focus_x, duration, e
         )
     else:
         face_crop_x = _build_smart_face_crop_expr(video_path, start, duration, focus_x)
-        # Native full 1080x1920 Lanczos crop + zoompan for crisp HD clarity!
         graph = (
             f"[0:v]fps=30,scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
             f"crop=1080:1920:x='{face_crop_x}':y='(ih-1920)/2',"
@@ -771,8 +830,17 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     title_text = _clean_text(clip_data.get("title_text", "")).upper() if banner_enabled else ""
     impact_stamp = _clean_text(clip_data.get("impact_stamp", "")).upper()
 
+    # Pick from 115+ fresh stamps if missing or generic
+    if edit_type in STAMP_POOLS:
+        if not impact_stamp or "1000" in impact_stamp:
+            pool = STAMP_POOLS[edit_type]
+            impact_stamp = pool[(index * 7 + orig_start + variant_id * 3) % len(pool)]
+
     ai_peak = clip_data.get("peak_sec", None)
-    peak_sec, has_existing_bgm = _analyze_audio_and_sync_peak(video_path, start, duration, ai_peak_sec=ai_peak)
+    is_live = bool(clip_data.get("is_live", False))
+    peak_sec, has_existing_bgm = _analyze_audio_and_sync_peak(
+        video_path, start, duration, ai_peak_sec=ai_peak, is_live=is_live
+    )
 
     mm, ss = divmod(max(0, orig_start), 60)
     output_file = f"MAG73_{edit_type.upper()}_{mm:02d}m{ss:02d}s_Clip_{index + 1}.mp4"
@@ -892,7 +960,6 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
 
     fc = video_chain + "".join(audio_chains)
 
-    # Crystal HD 1080p export (High profile, CRF 18, crisp Lanczos, zero muddiness)
     cmd.extend([
         "-filter_complex", fc,
         "-map", "[v]",
@@ -911,7 +978,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
 
     print(
         f"[MAG73 Pro HD Editor] Rendering {output_file} ({in_w}x{in_h} -> 1080x1920 CRF18) | "
-        f"Style={edit_type} | Variant={variant['name']} | CapStyle={caption_style} | Peak={peak_sec:.2f}s"
+        f"Style={edit_type} | Variant={variant['name']} | CapStyle={caption_style} | Stamp='{impact_stamp}' | Peak={peak_sec:.2f}s"
     )
     subprocess.run(cmd, check=True, timeout=240)
 
