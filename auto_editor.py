@@ -18,150 +18,106 @@ FALLBACK_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 PRO_FONT_FILE = "Montserrat-ExtraBold.ttf"
 PRO_FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-ExtraBold.ttf"
 
-# PRO CINEMA HDR CC VARIANTS:
-# - Lifted shadow curves (ZERO crushed pitch-black faces!)
-# - Crisp 3x3 micro-sharpening (sharp 1080p HD look, zero muddy artifacts)
-# - Smart 2.0-second B&W Silver Burst ONLY on obsidian_silver_burst climax (snaps back to crisp HDR color!)
+# PRO CINEMA HDR CC VARIANTS
+# B&W Silver Burst ONLY runs on `aura` / `roast` (NEVER on vlog/aesthetic/gaming/funny!)
 VISUAL_VARIANTS = [
     {
         "name": "obsidian_silver_burst",
         "hl": "&H0015CCFA&", "pop": "&H004444FF&", "acc": "&H0015CCFA&",
-        "ribbon": "0x11131C@0.82", "pbar": "0xEF4444", "border": "0xEF4444",
+        "pill_bg": "&H250E1220&", "pbar": "0xEF4444", "border": "0xEF4444",
         "base_grade": [
             "curves=m='0/0.02 0.25/0.25 0.5/0.53 0.75/0.80 1/1'",
-            "eq=contrast=1.08:saturation=1.15:brightness=0.01",
+            "eq=contrast=1.09:saturation=1.16:brightness=0.01",
             "unsharp=3:3:0.55:3:3:0.0",
         ],
-        "climax_grade": lambda pk: [
-            f"eq=brightness=0.30:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
-            f"hue=s=0:enable='between(t,{pk+0.10:.2f},{pk+2.10:.2f})'",
-            f"eq=contrast=1.14:brightness=0.03:enable='between(t,{pk+0.10:.2f},{pk+2.10:.2f})'",
-        ],
+        "hype_climax": lambda pk, allow_bw: (
+            [
+                f"eq=brightness=0.30:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
+                f"hue=s=0:enable='between(t,{pk+0.10:.2f},{pk+1.90:.2f})'",
+                f"eq=contrast=1.15:brightness=0.03:enable='between(t,{pk+0.10:.2f},{pk+1.90:.2f})'",
+            ]
+            if allow_bw
+            else [
+                f"eq=brightness=0.26:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
+                f"eq=contrast=1.14:saturation=1.26:enable='between(t,{pk+0.10:.2f},{pk+1.80:.2f})'",
+            ]
+        ),
     },
     {
         "name": "crimson_hdr",
         "hl": "&H005555FF&", "pop": "&H0015CCFA&", "acc": "&H005555FF&",
-        "ribbon": "0x7F1119@0.78", "pbar": "0xF43F5E", "border": "0xF43F5E",
+        "pill_bg": "&H251E0A10&", "pbar": "0xF43F5E", "border": "0xF43F5E",
         "base_grade": [
             "curves=m='0/0.02 0.25/0.25 0.5/0.53 0.75/0.80 1/1'",
-            "eq=contrast=1.09:saturation=1.18:brightness=0.01",
+            "eq=contrast=1.10:saturation=1.18:brightness=0.01",
             "colorbalance=rs=0.04:gs=0.00:bs=-0.02",
             "unsharp=3:3:0.55:3:3:0.0",
         ],
-        "climax_grade": lambda pk: [
+        "hype_climax": lambda pk, allow_bw: [
             f"eq=brightness=0.28:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
-            f"colorbalance=rs=0.09:gs=-0.03:bs=-0.03:enable='between(t,{pk+0.10:.2f},{pk+2.20:.2f})'",
+            f"colorbalance=rs=0.08:gs=-0.02:bs=-0.02:enable='between(t,{pk+0.10:.2f},{pk+2.00:.2f})'",
         ],
     },
     {
         "name": "ice_cinema",
         "hl": "&H00F8BD38&", "pop": "&H00FFFFFF&", "acc": "&H00F8BD38&",
-        "ribbon": "0x0A192F@0.82", "pbar": "0x38BDF8", "border": "0x38BDF8",
+        "pill_bg": "&H250A1828&", "pbar": "0x38BDF8", "border": "0x38BDF8",
         "base_grade": [
             "curves=m='0/0.02 0.25/0.26 0.5/0.53 0.75/0.80 1/1'",
-            "eq=contrast=1.08:saturation=1.14:brightness=0.01",
+            "eq=contrast=1.08:saturation=1.15:brightness=0.01",
             "colorbalance=rs=-0.03:gs=0.01:bs=0.05",
             "unsharp=3:3:0.55:3:3:0.0",
         ],
-        "climax_grade": lambda pk: [
+        "hype_climax": lambda pk, allow_bw: [
             f"eq=brightness=0.26:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
-            f"colorbalance=rs=-0.06:gs=0.01:bs=0.10:enable='between(t,{pk+0.10:.2f},{pk+2.10:.2f})'",
+            f"colorbalance=rs=-0.06:gs=0.01:bs=0.09:enable='between(t,{pk+0.10:.2f},{pk+1.90:.2f})'",
         ],
     },
     {
         "name": "golden_vibrant",
         "hl": "&H0000D7FF&", "pop": "&H0080DE4A&", "acc": "&H0000D7FF&",
-        "ribbon": "0x1E1506@0.82", "pbar": "0xF59E0B", "border": "0xF59E0B",
+        "pill_bg": "&H251B1306&", "pbar": "0xF59E0B", "border": "0xF59E0B",
         "base_grade": [
             "curves=m='0/0.02 0.25/0.26 0.5/0.54 0.75/0.81 1/1'",
             "eq=contrast=1.08:saturation=1.22:brightness=0.02",
             "colorbalance=rs=0.04:gs=0.02:bs=-0.04",
             "unsharp=3:3:0.55:3:3:0.0",
         ],
-        "climax_grade": lambda pk: [
+        "hype_climax": lambda pk, allow_bw: [
             f"eq=brightness=0.24:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
-            f"eq=contrast=1.12:saturation=1.28:enable='between(t,{pk+0.10:.2f},{pk+2.00:.2f})'",
+            f"eq=contrast=1.13:saturation=1.28:enable='between(t,{pk+0.10:.2f},{pk+1.90:.2f})'",
         ],
     },
     {
         "name": "emerald_pop",
         "hl": "&H0080DE4A&", "pop": "&H0015CCFA&", "acc": "&H0080DE4A&",
-        "ribbon": "0x091A14@0.82", "pbar": "0x4ADE80", "border": "0x4ADE80",
+        "pill_bg": "&H25081913&", "pbar": "0x4ADE80", "border": "0x4ADE80",
         "base_grade": [
             "curves=m='0/0.02 0.25/0.26 0.5/0.53 0.75/0.80 1/1'",
             "eq=contrast=1.09:saturation=1.18:brightness=0.01",
             "colorbalance=rs=-0.02:gs=0.03:bs=0.02",
             "unsharp=3:3:0.55:3:3:0.0",
         ],
-        "climax_grade": lambda pk: [
+        "hype_climax": lambda pk, allow_bw: [
             f"eq=brightness=0.26:enable='between(t,{pk:.2f},{pk+0.10:.2f})'",
-            f"eq=contrast=1.14:saturation=1.25:enable='between(t,{pk+0.10:.2f},{pk+2.00:.2f})'",
+            f"eq=contrast=1.14:saturation=1.25:enable='between(t,{pk+0.10:.2f},{pk+1.90:.2f})'",
         ],
     },
 ]
 
-# 130+ High-Energy Words that pop bigger with accent color in captions!
 HYPE_WORDS = {
-    # Aura / Sigma / Mindset
     "INSANE", "COLD", "AURA", "LEGEND", "GOAT", "KING", "BOSS", "BEAST", "MONSTER", "SAVAGE",
-    "LETHAL", "BRUTAL", "RUTHLESS", "FEARLESS", "UNREAL", "UNSTOPPABLE", "UNPLAYABLE", "DOMINANCE",
-    "ELITE", "PRIME", "PEAK", "SUPREME", "ICONIC", "ALPHA", "SIGMA", "MENACE", "DEMON", "GOD",
-    "ICE", "FROZEN", "SILENCE", "RESPECT", "MINDSET", "LEGACY", "CROWN", "ROYAL", "IMMORTAL",
-    # Roast / Comedy / Reactions
-    "COOKED", "ROAST", "ROASTED", "VIOLATION", "EMOTIONAL", "DAMAGE", "EXPOSED", "DESTROYED",
-    "HUMBLED", "OWNED", "RATIO", "CLOWN", "FAKE", "FRAUD", "CAUGHT", "SHOCKING", "SHOCKED",
-    "CRAZY", "WILD", "MAD", "INSANITY", "CHAOS", "DISASTER", "FAIL", "BRUH", "OMG", "WTF",
-    "NO", "WAIT", "STOP", "WHAT", "HOW", "BRO", "GUYS", "CHAT", "DEAD", "RIP", "DONE", "OVER",
-    # Gaming / Esports / Stream
-    "CLUTCH", "HEADSHOT", "ONETAP", "ACE", "SQUAD", "WIPE", "KNOCK", "FINISH", "REVIVE", "ZONE",
-    "HACKER", "AIMBOT", "CRACKED", "CLEAN", "FLICK", "SNIPE", "RUSH", "PUSH", "CAMP", "BOT",
-    "NOOB", "PRO", "OP", "GG", "WIN", "CHICKEN", "BOOYAH", "VICTORY", "BOOM", "BANG", "BOOM",
-    # Cricket / Sports
-    "SIX", "FOUR", "OUT", "BOWLED", "CATCH", "WICKET", "YORKER", "BOUNCER", "PACE", "SPEED",
-    "CENTURY", "FIFTY", "RECORD", "CHAMPION", "FINAL", "MATCH", "SHOT", "CLASSIC", "PURE",
-    # Hinglish / Indian Viral Words
-    "BHAI", "AREY", "KHATAM", "TATA", "BYE", "BAAP", "LEVEL", "SCENE", "MAZA", "PAISA", "CRORE",
-    "LAKH", "GAJAB", "ZABARDAST", "KHATARNAK", "AAG", "FIRE", "JHAKAAS", "OP", "SYSTEM", "SYSTUM",
-    # Numbers
-    "1", "4", "6", "50", "100", "150", "160", "200", "1000", "MILLION", "CRORE",
+    "LETHAL", "BRUTAL", "RUTHLESS", "FEARLESS", "UNREAL", "UNSTOPPABLE", "UNPLAYABLE", "ELITE",
+    "COOKED", "ROAST", "ROASTED", "VIOLATION", "EXPOSED", "DESTROYED", "HUMBLED", "OWNED",
+    "CRAZY", "WILD", "MAD", "CHAOS", "FAIL", "OMG", "WTF", "BHAI", "AREY", "KHATAM",
+    "CLUTCH", "HEADSHOT", "ONETAP", "ACE", "SQUAD", "WIPE", "HACKER", "CRACKED", "CLEAN",
+    "OP", "GG", "WIN", "BOOM", "BANG", "TRAIN", "DRIVER", "ENGINE", "NATIONAL", "MEDAL",
+    "SPONSOR", "HELP", "CHAMPION", "SIX", "FOUR", "OUT", "BOWLED", "CATCH", "YORKER",
+    "ZABARDAST", "GAJAB", "KHATARNAK", "FIRE", "SYSTUM", "100", "200", "1000", "20", "25",
 }
 
-# 115+ Dynamic Viral Impact Stamps (never repeats the same stamp!)
-STAMP_POOLS = {
-    "aura": [
-        "COLD", "ICE COLD", "UNPLAYABLE", "PURE CLASS", "GOD TIER", "LETHAL", "UNREAL",
-        "BUILT DIFFERENT", "MAIN CHARACTER", "FINAL BOSS", "PURE AURA", "SILENCED",
-        "FEARLESS", "PEAK FORM", "RUTHLESS", "UNTOUCHABLE", "RESPECT", "ICONIC",
-        "LEGACY", "PRIME MODE", "TOO EASY", "EFFORTLESS", "ELITE", "SUPREME",
-        "ICE IN VEINS", "DIFFERENT BREED", "LEVELS", "UNSTOPPABLE", "ROYAL", "CINEMA",
-    ],
-    "roast": [
-        "ROASTED", "COOKED", "VIOLATION", "SAVAGE", "NO MERCY", "DESTROYED", "EXPOSED",
-        "HUMBLED", "OWNED", "BODYBAG", "GAME OVER", "CRITICAL HIT", "TOO BRUTAL",
-        "COOKED HIM", "NO RECOVERY", "DONE OUT", "VIOLATED", "FLAMED", "EMOTIONAL",
-        "CHILL BRO", "CAUGHT IN 4K", "CHECKMATE", "OUTPLAYED", "KHATAM", "PACKED UP",
-    ],
-    "gaming": [
-        "CLUTCH", "CRACKED", "INSANE", "CLEAN", "DOMINATED", "HEADSHOT", "ONETAP",
-        "SQUAD WIPE", "HACKER AIM", "PRO MOVE", "NO SCOPE", "FLICK SHOT", "GOD MODE",
-        "DIFFED", "PURE SKILL", "INSANE IQ", "UNREAL AIM", "WIPED OUT", "OUTPLAYED",
-        "LASERED", "DEMO MODE", "MVP", "CLUTCH GOD", "UNSTOPPABLE", "ZERO CHANCE",
-    ],
-    "clash": [
-        "HEATED", "COOKED", "NO WAY", "SAVAGE", "WAR MODE", "INTENSE", "CONFRONTED",
-        "FACE OFF", "FIRE", "RAW TRUTH", "NO FILTER", "EXPLODED", "CHAOS", "SHATTERED",
-        "COLD REPLY", "SHUT DOWN", "BIG CLASH", "REAL TALK", "SPICY", "TENSION",
-    ],
-    "funny": [
-        "WAIT WHAT", "NO WAY", "DEAD", "TOO FUNNY", "BRO WHAT", "CHAOS", "PLOT TWIST",
-        "CAUGHT", "BRUH", "UNEXPECTED", "OUT OF POCKET", "COMEDY GOLD", "LOST IT",
-        "PURE CHAOS", "WHAT A FAIL",
-    ],
-    "drama": [
-        "SHOCKING", "PLOT TWIST", "INTENSE", "EXPOSED", "NO WAY", "BIG REVEAL",
-        "HEATED", "REAL DRAMA", "UNREAL", "TENSION",
-    ],
-}
+HYPE_STYLES = ("roast", "aura", "gaming", "clash", "funny")
+CALM_STYLES = ("vlog", "aesthetic", "informative", "drama", "clean")
 
 
 def _get_plugin_config():
@@ -255,8 +211,49 @@ def _probe_video_info(video_path):
         return 1920, 1080, 60.0
 
 
+def _detect_top_facecam_vertical(video_path, start, duration):
+    """
+    Detects if a vertical/stacked live stream ALREADY has a facecam at the top (y < 28%),
+    so the Hook Banner automatically shifts BELOW the facecam instead of covering the streamer's eyes!
+    """
+    if not HAS_CV2:
+        return False
+    try:
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return False
+        cascade_path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
+        face_cascade = cv2.CascadeClassifier(cascade_path)
+        if face_cascade.empty():
+            cap.release()
+            return False
+
+        hits = 0
+        for sec_off in (0.5, 1.5, 2.5, 4.0):
+            if sec_off > duration:
+                break
+            cap.set(cv2.CAP_PROP_POS_MSEC, (start + sec_off) * 1000.0)
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                continue
+            fh, fw = frame.shape[:2]
+            if fh <= fw:
+                break
+            top_strip = frame[0:int(fh * 0.32), :]
+            gray = cv2.cvtColor(top_strip, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.15, minNeighbors=5, minSize=(40, 40))
+            if len(faces) > 0:
+                hits += 1
+        cap.release()
+        if hits >= 2:
+            print("[MAG73 SmartLayout] Top facecam detected — shifting Hook Banner safely below facecam!")
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
-    """Anti-poster motion-verified speaker & central action auto-reframer."""
     fallback_x = "0.22*(iw-ow)" if focus_x == "left" else ("0.78*(iw-ow)" if focus_x == "right" else "(iw-ow)/2")
     if not HAS_CV2:
         return fallback_x
@@ -285,6 +282,11 @@ def _build_smart_face_crop_expr(video_path, start, duration, focus_x):
                 break
 
             fh, fw = frame.shape[:2]
+            if fh >= fw:
+                # Already vertical source — keep exact dead center!
+                cap.release()
+                return "(iw-ow)/2"
+
             scale = 480.0 / max(1, fw)
             sh = max(1, int(fh * scale))
             small = cv2.resize(frame, (480, sh))
@@ -443,8 +445,7 @@ def _analyze_audio_and_sync_peak(video_path, start, duration, ai_peak_sec=None, 
 
         sorted_rms = sorted(rms_list)
         p25_floor = sorted_rms[len(sorted_rms) // 4]
-        # Tuned threshold so game ambient sound on Live Streams doesn't block sidechain-ducked BGM!
-        bgm_thresh = 0.085 if is_live else 0.072
+        bgm_thresh = 0.090 if is_live else 0.072
         has_existing_bgm = p25_floor > bgm_thresh
 
         if ai_peak_sec and 2.5 <= float(ai_peak_sec) <= duration - 2.0:
@@ -506,7 +507,7 @@ def _generate_whoosh_sfx(out_path):
             [
                 "ffmpeg", "-y", "-f", "lavfi",
                 "-i", "anoisesrc=color=pink:duration=0.35:sample_rate=44100",
-                "-af", "bandpass=f=950:width_type=h:w=1100,afade=t=in:st=0:d=0.12,afade=t=out:st=0.15:d=0.20,volume=0.48",
+                "-af", "bandpass=f=950:width_type=h:w=1100,afade=t=in:st=0:d=0.12,afade=t=out:st=0.15:d=0.20,volume=0.50",
                 "-c:a", "libmp3lame", "-q:a", "4", out_path,
             ],
             check=True,
@@ -575,14 +576,22 @@ def _format_two_line_hook(title_text, acc_col):
 
 def generate_pro_ass(
     words, clip_start, clip_end, font_name, edit_type, variant, caption_style,
-    is_wide_blur, title_text, impact_stamp, peak_sec, ass_path, captions_on=True
+    is_wide_blur, has_top_facecam, title_text, impact_stamp, peak_sec, ass_path, captions_on=True
 ):
+    """
+    SLEEK ZERO-OVERLAP ASS ENGINE:
+    - Hook Banner uses tight BorderStyle=3 pill (NEVER full-width ugly black bar!) and shifts cleanly
+      below top facecams (`y=520`) so streamer faces are NEVER blocked!
+    - Impact Stamp ONLY fires on hype styles (`roast`, `aura`, `clash`, `gaming`) — NEVER emotional vlogs!
+    """
     hl_color = variant["hl"]
     pop_color = variant["pop"]
     acc_color = variant["acc"]
+    pill_bg = variant["pill_bg"]
 
-    cap_margin_v = 320 if is_wide_blur else 380
-    hook_margin_v = 205 if not is_wide_blur else 255
+    cap_margin_v = 330 if is_wide_blur else 380
+    # Smart Hook Y position: below top facecam (520px) if stacked stream, else sleek top safe zone (175px)
+    hook_margin_v = 520 if has_top_facecam else (240 if is_wide_blur else 175)
 
     if caption_style == "boxed_pill":
         cap_style_line = (
@@ -624,7 +633,7 @@ WrapStyle: 2
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 {cap_style_line}
-Style: Hook,{font_name},56,&H00FFFFFF,&H00FFFFFF,&H00000000,&HAA000000,-1,0,0,0,100,100,2,0,1,6,4,8,65,65,{hook_margin_v},1
+Style: Hook,{font_name},52,&H00FFFFFF,&H00FFFFFF,{pill_bg},&H00000000,-1,0,0,0,100,100,2,0,3,18,0,8,70,70,{hook_margin_v},1
 Style: Stamp,{font_name},92,{acc_color},&H00FFFFFF,&H00000000,&HCC000000,-1,0,0,0,100,100,3,0,1,11,6,5,40,40,0,1
 
 [Events]
@@ -641,9 +650,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         )
         lines.append(f"Dialogue: 2,{_format_ass_time(0.08)},{_format_ass_time(hook_end)},Hook,,0,0,0,,{anim_hook}")
 
-    if impact_stamp and edit_type in ("roast", "aura", "clash", "gaming", "funny", "drama"):
+    # Strictly ONLY allow climax stamp on genuine hype/action/roast clips (NEVER vlog/aesthetic!)
+    if impact_stamp and edit_type in ("roast", "aura", "clash", "gaming"):
         st_s = peak_sec + 0.04
-        st_e = min(clip_end - clip_start - 0.25, st_s + 1.05)
+        st_e = min(clip_end - clip_start - 0.25, st_s + 1.00)
         if st_e > st_s + 0.35:
             anim_stamp = r"{\fad(40,220)\fscx155\fscy155\t(0,110,\fscx100\fscy100)}" + impact_stamp
             lines.append(f"Dialogue: 3,{_format_ass_time(st_s)},{_format_ass_time(st_e)},Stamp,,0,0,0,,{anim_stamp}")
@@ -737,16 +747,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         print(f"[MAG73 Captions] Template={caption_style} | {len(flat_events)} zero-overlap events.")
 
     if not lines:
-        return None, hook_end
+        return None
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write(header + "\n".join(lines))
-    return ass_path, hook_end
+    return ass_path
 
 
 def _build_layout_and_motion(video_path, start, in_w, in_h, focus_x, duration, edit_type, variant, peak_sec, layout_mode):
     """
-    NATIVE 1080x1920 CRYSTAL HD PIPELINE (NO 720p downscale!):
-    Subtle sharp zoom (max 1.14x) preserves full 1080p clarity without pixelation!
+    REAL CAPCUT-LEVEL SMOOTH MOTION (NATIVE 1080x1920):
+    - Hype styles (`gaming`, `roast`, `aura`, `clash`, `funny`): snappy opening zoom-whip +
+      smooth rhythmic 4.4s breathing zoom pulses + climax punch-zoom & camera shake!
+    - Calm/Emotional styles (`vlog`, `aesthetic`, `drama`, `informative`): buttery cinema push-in + gentle peak swell (zero shake!).
     """
     dur_frames = max(30, int(duration * 30))
     pk = float(peak_sec)
@@ -759,23 +771,25 @@ def _build_layout_and_motion(video_path, start, in_w, in_h, focus_x, duration, e
     else:
         is_wide_blur = (edit_type in ("gaming", "clash")) and is_landscape
 
-    peak_bell = f"max(0,1-abs(on/30-{pk:.2f})/0.80)"
+    peak_bell = f"max(0,1-abs(on/30-{pk:.2f})/0.85)"
     shake_win = f"between(on/30,{pk:.2f},{pk+0.36:.2f})"
+    rhythm_wave = "0.05*sin(on/42)*sin(on/42)"
 
     if edit_type in ("roast", "aura"):
-        z_expr = f"1.01+0.08*max(0,1-on/11)+0.04*min(1,on/{dur_frames})+0.12*{peak_bell}"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+14*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+14*cos(on*3.6)*{shake_win},0,ih-ih/zoom)"
-    elif edit_type == "aesthetic":
-        z_expr = f"1.01+0.07*max(0,1-on/14)+0.06*min(1,on/{dur_frames})+0.07*{peak_bell}"
+        z_expr = f"1.01+0.13*max(0,1-on/10)+{rhythm_wave}+0.14*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+15*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+15*cos(on*3.6)*{shake_win},0,ih-ih/zoom)"
+    elif edit_type in ("gaming", "clash", "funny"):
+        z_expr = f"1.01+0.12*max(0,1-on/10)+{rhythm_wave}+0.12*{peak_bell}"
+        x_expr = f"clip(iw/2-(iw/zoom/2)+12*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
+        y_expr = f"clip(ih/2-(ih/zoom/2)+12*cos(on*3.5)*{shake_win},0,ih-ih/zoom)"
+    elif edit_type in ("vlog", "aesthetic", "drama", "informative"):
+        # Smooth cinema motion — ZERO shake on emotional/vlog clips!
+        z_expr = f"1.01+0.08*max(0,1-on/12)+0.05*min(1,on/{dur_frames})+0.06*{peak_bell}"
         x_expr = "iw/2-(iw/zoom/2)"
         y_expr = "ih/2-(ih/zoom/2)"
-    elif edit_type in ("funny", "gaming", "clash"):
-        z_expr = f"1.00+0.08*max(0,1-on/11)+0.03*min(1,on/{dur_frames})+0.11*{peak_bell}"
-        x_expr = f"clip(iw/2-(iw/zoom/2)+11*sin(on*3.1)*{shake_win},0,iw-iw/zoom)"
-        y_expr = f"clip(ih/2-(ih/zoom/2)+11*cos(on*3.5)*{shake_win},0,ih-ih/zoom)"
     else:
-        z_expr = f"1.00+0.06*max(0,1-on/12)+0.04*min(1,on/{dur_frames})+0.06*{peak_bell}"
+        z_expr = f"1.00+0.04*min(1,on/{dur_frames})"
         x_expr = "iw/2-(iw/zoom/2)"
         y_expr = "ih/2-(ih/zoom/2)"
 
@@ -828,19 +842,16 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     layout_mode = str(clip_data.get("layout_mode", "auto")).strip().lower()
     focus_x = str(clip_data.get("focus_x", "center")).lower()
     title_text = _clean_text(clip_data.get("title_text", "")).upper() if banner_enabled else ""
-    impact_stamp = _clean_text(clip_data.get("impact_stamp", "")).upper()
-
-    # Pick from 115+ fresh stamps if missing or generic
-    if edit_type in STAMP_POOLS:
-        if not impact_stamp or "1000" in impact_stamp:
-            pool = STAMP_POOLS[edit_type]
-            impact_stamp = pool[(index * 7 + orig_start + variant_id * 3) % len(pool)]
+    impact_stamp = _clean_text(clip_data.get("impact_stamp", "")).upper() if edit_type in ("roast", "aura", "clash", "gaming") else ""
 
     ai_peak = clip_data.get("peak_sec", None)
     is_live = bool(clip_data.get("is_live", False))
     peak_sec, has_existing_bgm = _analyze_audio_and_sync_peak(
         video_path, start, duration, ai_peak_sec=ai_peak, is_live=is_live
     )
+
+    # Check if stacked vertical stream has top facecam so Hook Banner NEVER covers the streamer's face!
+    has_top_facecam = (in_h > in_w) and _detect_top_facecam_vertical(video_path, start, duration)
 
     mm, ss = divmod(max(0, orig_start), 60)
     output_file = f"MAG73_{edit_type.upper()}_{mm:02d}m{ss:02d}s_Clip_{index + 1}.mp4"
@@ -849,10 +860,10 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     if bgm_enabled and edit_type != "clean" and not has_existing_bgm:
         bgm_file = _fetch_audio(clip_data.get("bgm_query", ""), f"bgm_{index}_{variant_id}")
 
-    whoosh_file = _generate_whoosh_sfx(f"whoosh_{index}.mp3") if (sfx_enabled and edit_type != "clean") else None
+    whoosh_file = _generate_whoosh_sfx(f"whoosh_{index}.mp3") if (sfx_enabled and edit_type in HYPE_STYLES) else None
 
     sfx_file = None
-    if sfx_enabled and edit_type in ("roast", "aura", "aesthetic", "funny", "gaming", "clash", "drama"):
+    if sfx_enabled and edit_type in HYPE_STYLES:
         sfx_file = _fetch_audio(clip_data.get("sfx_query", ""), f"sfx_{index}_{variant_id}")
         if not sfx_file:
             sfx_file = _generate_synth_sfx(f"synth_sfx_{index}.mp3", edit_type)
@@ -861,7 +872,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         video_path, start, in_w, in_h, focus_x, duration, edit_type, variant, peak_sec, layout_mode
     )
 
-    ass_file, hook_end = generate_pro_ass(
+    ass_file = generate_pro_ass(
         word_timestamps,
         start,
         start + duration,
@@ -870,6 +881,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         variant,
         caption_style,
         is_wide_blur,
+        has_top_facecam,
         title_text,
         impact_stamp,
         peak_sec,
@@ -881,13 +893,10 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         post_vf = ["eq=contrast=1.06:saturation=1.08", "unsharp=3:3:0.40:3:3:0.0"]
     else:
         post_vf = list(variant["base_grade"])
-        if edit_type in ("roast", "aura", "aesthetic", "clash", "gaming", "drama", "funny"):
-            post_vf.extend(variant["climax_grade"](peak_sec))
-
-    if title_text and edit_type != "clean" and not is_wide_blur:
-        post_vf.append(
-            f"drawbox=x=0:y=175:w=iw:h=175:color={variant['ribbon']}:t=fill:enable='between(t,0.08,{hook_end:.2f})'"
-        )
+        # Climax flash/B&W ONLY on hype styles (NEVER ruins emotional/vlog clips!)
+        if edit_type in HYPE_STYLES:
+            allow_bw = edit_type in ("aura", "roast")
+            post_vf.extend(variant["hype_climax"](peak_sec, allow_bw))
 
     if custom_ffmpeg and ";" not in custom_ffmpeg and "[" not in custom_ffmpeg:
         post_vf.append(custom_ffmpeg)
@@ -904,7 +913,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
 
     cmd = ["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", video_path]
 
-    bgm_vol = "0.19" if edit_type in ("roast", "aura", "aesthetic", "gaming", "clash") else "0.13"
+    bgm_vol = "0.21" if edit_type in HYPE_STYLES else "0.14"
     fade_out_start = max(0.5, duration - 1.2)
 
     audio_mix_labels = ["[voice]"]
@@ -935,7 +944,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
     if whoosh_file:
         cmd.extend(["-i", whoosh_file])
         audio_chains.append(
-            f"[{next_in}:a]aformat=sample_rates=44100:channel_layouts=stereo,atrim=0:0.35,volume=0.32[whoosh];"
+            f"[{next_in}:a]aformat=sample_rates=44100:channel_layouts=stereo,atrim=0:0.35,volume=0.34[whoosh];"
         )
         audio_mix_labels.append("[whoosh]")
         next_in += 1
@@ -945,7 +954,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
         sfx_ms = int(peak_sec * 1000)
         audio_chains.append(
             f"[{next_in}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
-            f"atrim=0:0.95,afade=t=out:st=0.60:d=0.35,adelay={sfx_ms}|{sfx_ms},volume=0.38[sfx];"
+            f"atrim=0:0.95,afade=t=out:st=0.60:d=0.35,adelay={sfx_ms}|{sfx_ms},volume=0.40[sfx];"
         )
         audio_mix_labels.append("[sfx]")
         next_in += 1
@@ -978,7 +987,7 @@ def render_pro_short(video_path, clip_data, word_timestamps, index):
 
     print(
         f"[MAG73 Pro HD Editor] Rendering {output_file} ({in_w}x{in_h} -> 1080x1920 CRF18) | "
-        f"Style={edit_type} | Variant={variant['name']} | CapStyle={caption_style} | Stamp='{impact_stamp}' | Peak={peak_sec:.2f}s"
+        f"Style={edit_type} | Variant={variant['name']} | CapStyle={caption_style} | TopFacecam={has_top_facecam} | Stamp='{impact_stamp}'"
     )
     subprocess.run(cmd, check=True, timeout=240)
 
