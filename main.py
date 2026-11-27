@@ -29,7 +29,6 @@ def _probe_duration(path):
 
 
 def _exact_trim_segment(seg_path, local_start, target_dur, out_path="exact_clip.mp4"):
-    """Frame-accurate near-lossless (CRF 14) trim to 0.000s so ZERO quality is lost before final render."""
     seg_dur = _probe_duration(seg_path)
     safe_start = max(0.0, float(local_start))
     if seg_dur - safe_start < 7.0:
@@ -64,10 +63,14 @@ def main():
     os.makedirs("output_clips", exist_ok=True)
     is_upload_asset = "api.github.com/repos/" in source_url and "/releases/assets/" in source_url
 
-    # MODE 1: ULTRA-FAST SCAN (Audio + YouTube Heatmap + Comments)
+    # MODE 1: INSTANT FAST SCAN (YouTube Subtitles + Heatmap + Comments)
     if mode == "scan":
-        video_path, audio_path, audience_signals = fetch_scan_media(source_url, is_upload=is_upload_asset)
-        clips = run_fast_scan_council(audio_path, audience_signals, video_path=video_path)
+        video_path, audio_path, audience_signals, sub_words = fetch_scan_media(
+            source_url, is_upload=is_upload_asset
+        )
+        clips = run_fast_scan_council(
+            audio_path, audience_signals, video_path=video_path, preloaded_words=sub_words
+        )
 
         scan_payload = {
             "source_url": source_url,
@@ -80,7 +83,7 @@ def main():
         print(f"[MAG73 Fast Scan] Saved {len(clips)} elite viral moment(s) to {out_json}")
         return
 
-    # MODE 2: RENDER SINGLE SELECTED CLIP (Trim-First Zero-Drift Parallel Pipeline)
+    # MODE 2: RENDER SINGLE SELECTED CLIP (VOD Parallel Pipeline)
     if mode == "render_clip":
         if not clip_spec_raw:
             raise RuntimeError("CLIP_SPEC JSON is missing for render_clip mode!")
@@ -106,7 +109,7 @@ def main():
         plugin_cfg = _get_plugin_config()
         caption_lang = str(plugin_cfg.get("caption_lang", "hinglish")).lower()
         seg_transcript, word_timestamps, _ = extract_accurate_transcript(
-            exact_path, caption_lang=caption_lang, context_hint=video_title
+            exact_path, caption_lang=caption_lang, context_hint=video_title, fast_scan=False
         )
 
         local_clip = refine_clip_metadata(local_clip, seg_transcript, word_timestamps)
@@ -117,22 +120,44 @@ def main():
             print(f"[MAG73 Render] Individual HD clip ready: output_clips/{os.path.basename(out_mp4)}")
         return
 
-    # MODE 3: DIRECT LIVE / VOD / UPLOAD (Live Stream & Legacy)
+    # MODE 3: LIVE STREAM / DIRECT (Exact Same VOD-Level Pro Pipeline & Multi-Style Variety!)
     video_path, audience_signals = fetch_media(source_url, mode=mode)
-    clips, word_timestamps = run_super_ai_council(video_path, audience_signals)
+    clips, _ = run_super_ai_council(video_path, audience_signals)
 
     if not clips:
         print("[MAG73] No viral clips detected in this segment.")
         return
 
-    for idx, clip_data in enumerate(clips):
+    plugin_cfg = _get_plugin_config()
+    caption_lang = str(plugin_cfg.get("caption_lang", "hinglish")).lower()
+    run_num = int(os.getenv("GITHUB_RUN_NUMBER", "1") or "1")
+    video_title = str(audience_signals.get("video_title", "") or "")
+
+    for idx, clip_data in enumerate(clips[:2]):
         try:
-            clip_data["orig_start"] = int(round(float(clip_data.get("start", 0))))
-            out_mp4 = render_pro_short(video_path, clip_data, word_timestamps, idx)
+            s_sec = float(clip_data.get("start", 0))
+            e_sec = float(clip_data.get("end", s_sec + 20))
+            t_dur = max(12.0, min(26.0, e_sec - s_sec))
+            exact_path = _exact_trim_segment(video_path, s_sec, t_dur, f"exact_live_{idx}.mp4")
+
+            local_clip = dict(clip_data)
+            local_clip["orig_start"] = run_num * 10 + idx
+            local_clip["clip_index"] = run_num + idx
+            local_clip["start"] = 0.0
+            local_clip["end"] = t_dur
+            local_clip["video_title"] = video_title
+            local_clip["is_live"] = (mode == "live")
+
+            seg_transcript, word_timestamps, _ = extract_accurate_transcript(
+                exact_path, caption_lang=caption_lang, context_hint=video_title, fast_scan=False
+            )
+            local_clip = refine_clip_metadata(local_clip, seg_transcript, word_timestamps)
+
+            out_mp4 = render_pro_short(exact_path, local_clip, word_timestamps, run_num + idx)
             if out_mp4 and os.path.exists(out_mp4):
                 shutil.move(out_mp4, os.path.join("output_clips", os.path.basename(out_mp4)))
         except Exception as e:
-            print(f"[MAG73] Clip {idx + 1} render error: {e}")
+            print(f"[MAG73] Live Clip {idx + 1} render error: {e}")
 
 
 if __name__ == "__main__":
