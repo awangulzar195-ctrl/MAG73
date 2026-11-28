@@ -32,89 +32,204 @@ VALID_STYLES = ("roast", "aura", "aesthetic", "vlog", "gaming", "funny", "drama"
 LIVE_VARIETY_STYLES = ("gaming", "funny", "clash", "aura", "roast")
 CAPTION_STYLES = ("hormozi_pop", "boxed_pill", "neon_glow", "word_slam", "editorial_italic")
 
-BGM_POOLS = {
+# ALL 22 EXACT INSTAGRAM REEL SUB-TYPES GROUPED BY CATEGORY
+SUBTYPES_BY_STYLE = {
     "aura": [
-        "ytsearch1:dark phonk slowed reverb instrumental no copyright",
-        "ytsearch1:sigma cold edit dark bass instrumental royalty free",
-        "ytsearch1:aggressive funk montagen slowed instrumental no copyright",
-        "ytsearch1:cinematic dark trap beat edit instrumental no copyright",
-        "ytsearch1:hardwave cyberpunk dark synth edit beat no copyright",
-        "ytsearch1:menacing drill beat instrumental sports edit no copyright",
+        "aura_minimal_glow",
+        "aura_skull_freeze",
+        "aura_mindset_statement",
+        "aura_velocity_ramp",
+        "aura_crimson_devil",
+        "aura_ice_cold_drop",
+        "roast_red_ribbon_drop",
+        "switch_attitude_drop",
     ],
     "roast": [
-        "ytsearch1:savage roast hip hop trap beat instrumental no copyright",
-        "ytsearch1:sigma roast dark funk beat instrumental royalty free",
-        "ytsearch1:gangster comedy trap instrumental no copyright",
-        "ytsearch1:hard bass boom bap roast beat no copyright",
-        "ytsearch1:dark phonk meme edit instrumental no copyright",
-        "ytsearch1:swagger hip hop beat instrumental no copyright",
+        "roast_red_ribbon_drop",
+        "roast_double_meaning",
+        "aura_skull_freeze",
+        "aura_crimson_devil",
+        "switch_attitude_drop",
+    ],
+    "clash": [
+        "roast_red_ribbon_drop",
+        "aura_crimson_devil",
+        "aura_skull_freeze",
+        "switch_attitude_drop",
     ],
     "aesthetic": [
-        "ytsearch1:emotional inspiring cinematic piano instrumental no copyright",
-        "ytsearch1:moody dark ambient motivation instrumental no copyright",
-        "ytsearch1:slowed reverb emotional cinema beat no copyright",
-        "ytsearch1:deep atmospheric epic sports edit music no copyright",
-        "ytsearch1:nostalgic lofi cinema beat instrumental no copyright",
+        "emo_brotherhood_story",
+        "emo_wholesome_heart_drop",
+        "emo_moody_tribute",
+        "emo_broken_silence",
+        "switch_banter_aesthetic",
+    ],
+    "vlog": [
+        "emo_wholesome_heart_drop",
+        "emo_brotherhood_story",
+        "emo_moody_tribute",
+        "comedy_red_ribbon",
+        "switch_banter_aesthetic",
+    ],
+    "drama": [
+        "emo_broken_silence",
+        "emo_brotherhood_story",
+        "roast_red_ribbon_drop",
+        "aura_mindset_statement",
+    ],
+    "funny": [
+        "comedy_letterbox_classic",
+        "comedy_letterbox_lyric",
+        "comedy_red_ribbon",
+        "comedy_meme_pop",
+        "switch_banter_aesthetic",
     ],
     "gaming": [
-        "ytsearch1:energetic gaming montage phonk beat no copyright",
-        "ytsearch1:fast hype electronic trap gaming beat no copyright",
-        "ytsearch1:esports clutch montage dubstep instrumental no copyright",
-        "ytsearch1:brazilian funk gaming edit instrumental no copyright",
-        "ytsearch1:adrenaline drum and bass gaming beat no copyright",
-        "ytsearch1:hard trap montage beat instrumental no copyright",
+        "gaming_stacked_comeback",
+        "gaming_esports_montage",
+        "gaming_clutch_skull",
+        "gaming_lobby_troll",
+        "aura_velocity_ramp",
+    ],
+    "informative": [
+        "aura_mindset_statement",
+        "emo_moody_tribute",
+    ],
+    "clean": [
+        "clean_minimal",
+    ],
+}
+
+ALL_SUBTYPES = sorted({st for lst in SUBTYPES_BY_STYLE.values() for st in lst})
+
+# DEFAULT EMOJI PER SUB-TYPE
+DEFAULT_EMOJI_BY_SUBTYPE = {
+    "roast_red_ribbon_drop": "skull",
+    "roast_double_meaning": "eyes",
+    "aura_minimal_glow": "cold",
+    "aura_skull_freeze": "skull",
+    "aura_mindset_statement": "none",
+    "aura_velocity_ramp": "fire",
+    "aura_crimson_devil": "crown",
+    "aura_ice_cold_drop": "cold",
+    "emo_brotherhood_story": "none",
+    "emo_wholesome_heart_drop": "heart",
+    "emo_moody_tribute": "none",
+    "emo_broken_silence": "broken_heart",
+    "comedy_letterbox_classic": "laugh",
+    "comedy_letterbox_lyric": "laugh",
+    "comedy_red_ribbon": "laugh",
+    "comedy_meme_pop": "mindblown",
+    "gaming_stacked_comeback": "fire",
+    "gaming_esports_montage": "crown",
+    "gaming_clutch_skull": "skull",
+    "gaming_lobby_troll": "laugh",
+    "switch_banter_aesthetic": "heart",
+    "switch_attitude_drop": "crown",
+    "clean_minimal": "none",
+}
+
+# HUGE ROTATING PHONK / EMOTIONAL / COMEDY / ESPORTS BGM POOLS (ZERO REPETITION!)
+BGM_POOLS = {
+    "aura": [
+        "ytsearch1:dark brazilian phonk slowed reverb edit instrumental no copyright",
+        "ytsearch1:sigma cold edit dark bass phonk slowed royalty free",
+        "ytsearch1:aggressive funk montagen slowed bass drop no copyright",
+        "ytsearch1:metamorphosis style dark phonk slowed instrumental no copyright",
+        "ytsearch1:hardwave cyberpunk dark synth edit beat no copyright",
+        "ytsearch1:menacing drill dark bass sports edit instrumental no copyright",
+        "ytsearch1:dark sigma male attitude phonk instrumental royalty free",
+        "ytsearch1:ultra slowed dark aura edit bass beat no copyright",
+    ],
+    "roast": [
+        "ytsearch1:savage roast dark phonk edit instrumental no copyright",
+        "ytsearch1:gangster sigma funk roast beat slowed no copyright",
+        "ytsearch1:hard bass trap roast comeback instrumental no copyright",
+        "ytsearch1:dark brazilian funk savage edit beat royalty free",
+        "ytsearch1:menacing hip hop roast beat instrumental no copyright",
+        "ytsearch1:cold sigma phonk drop instrumental no copyright",
+    ],
+    "aesthetic": [
+        "ytsearch1:soulful punjabi slowed reverb emotional instrumental no copyright",
+        "ytsearch1:emotional inspiring cinematic piano slowed instrumental no copyright",
+        "ytsearch1:moody dark ambient motivation slowed beat no copyright",
+        "ytsearch1:brotherhood loyalty emotional violin piano instrumental no copyright",
+        "ytsearch1:aesthetic dreamy slowed reverb edit music no copyright",
+        "ytsearch1:deep nostalgic lofi cinema instrumental no copyright",
+    ],
+    "gaming": [
+        "ytsearch1:energetic esports montage phonk beat no copyright",
+        "ytsearch1:fast hype electronic trap gaming clutch beat no copyright",
+        "ytsearch1:brazilian funk gaming montage instrumental no copyright",
+        "ytsearch1:adrenaline bass drop esports highlight music no copyright",
+        "ytsearch1:hard trap montage edit beat instrumental no copyright",
+        "ytsearch1:hyper aggressive gaming phonk instrumental no copyright",
     ],
     "clash": [
         "ytsearch1:intense dark trap confrontation beat no copyright",
-        "ytsearch1:aggressive drill instrumental hype no copyright",
-        "ytsearch1:epic faceoff suspense beat instrumental no copyright",
-        "ytsearch1:heavy bass tension edit music no copyright",
+        "ytsearch1:aggressive drill faceoff instrumental no copyright",
+        "ytsearch1:heavy bass sigma clash phonk instrumental no copyright",
+        "ytsearch1:epic dark suspense drop beat no copyright",
     ],
     "funny": [
-        "ytsearch1:upbeat quirky comedy background beat no copyright",
-        "ytsearch1:playful pizzicato meme background music no copyright",
-        "ytsearch1:bouncy hip hop funny vlog beat no copyright",
-        "ytsearch1:goofy jazz comedy instrumental no copyright",
+        "ytsearch1:upbeat quirky comedy meme background beat no copyright",
+        "ytsearch1:trending funny reel hip hop beat instrumental no copyright",
+        "ytsearch1:playful bouncy comedy vlog beat no copyright",
+        "ytsearch1:funny indian meme background music instrumental no copyright",
     ],
     "vlog": [
         "ytsearch1:warm emotional inspiring vlog piano beat no copyright",
-        "ytsearch1:chill aesthetic lifestyle vlog lofi beat no copyright",
-        "ytsearch1:modern cinematic storytelling vlog music no copyright",
-        "ytsearch1:smooth acoustic chill hip hop vlog beat no copyright",
+        "ytsearch1:soulful aesthetic slowed instrumental vlog no copyright",
+        "ytsearch1:modern cinematic storytelling lofi beat no copyright",
+        "ytsearch1:chill lifestyle vlog groove instrumental no copyright",
     ],
     "drama": [
         "ytsearch1:cinematic suspense tension dark underscore no copyright",
-        "ytsearch1:dramatic pulse thriller background music no copyright",
         "ytsearch1:intense emotional strings tension beat no copyright",
-        "ytsearch1:dark reality tv drama background music no copyright",
+        "ytsearch1:dark reality tv drama background beat no copyright",
+        "ytsearch1:sad emotional piano slowed reverb instrumental no copyright",
     ],
     "informative": [
-        "ytsearch1:clean modern documentary tech beat no copyright",
+        "ytsearch1:clean modern documentary dark beat no copyright",
         "ytsearch1:minimal smart explainer background music no copyright",
-        "ytsearch1:sleek corporate lo-fi documentary beat no copyright",
+        "ytsearch1:curious investigative podcast beat no copyright",
     ],
     "clean": [""],
 }
 
-DEFAULT_SFX_BY_STYLE = {
-    "roast": "ytsearch1:vine boom bass drop impact sfx",
-    "aura": "ytsearch1:cinematic bass drop impact sound effect",
-    "gaming": "ytsearch1:cinematic bass impact hit sfx",
-    "clash": "ytsearch1:dramatic bass boom sfx",
-    "funny": "ytsearch1:vine boom sound effect short",
-    "aesthetic": "",
-    "vlog": "",
-    "drama": "",
-    "informative": "",
-    "clean": "",
+SFX_POOLS = {
+    "boom": [
+        "ytsearch1:vine boom bass drop impact sound effect short",
+        "ytsearch1:cinematic sub bass drop hit sfx short",
+        "ytsearch1:deep phonk bass drop impact sfx",
+    ],
+    "laugh": [
+        "ytsearch1:funny meme laugh sound effect short",
+        "ytsearch1:indian funny laugh track meme sfx short",
+        "ytsearch1:comedy laugh punchline sound effect short",
+    ],
+    "none": [""],
 }
 
-# Stamps ONLY for genuine hype/action/roast styles (NEVER vlog/aesthetic/drama!)
 HYPE_STAMP_POOLS = {
-    "aura": ["COLD", "ICE COLD", "UNPLAYABLE", "PURE CLASS", "GOD TIER", "BUILT DIFFERENT", "RESPECT", "CINEMA"],
-    "roast": ["ROASTED", "COOKED", "VIOLATION", "SAVAGE", "NO MERCY", "EXPOSED", "HUMBLED", "CHECKMATE"],
-    "gaming": ["CLUTCH", "CRACKED", "INSANE", "CLEAN", "DOMINATED", "PRO MOVE", "GOD MODE", "CHAOS"],
-    "clash": ["COOKED", "HEATED", "NO WAY", "SAVAGE", "INTENSE", "COLD REPLY"],
+    "aura": [
+        "COLD", "ICE COLD", "UNPLAYABLE", "PURE CLASS", "GOD TIER", "BUILT DIFFERENT",
+        "RESPECT", "CINEMA", "FINAL BOSS", "MAIN CHARACTER", "SILENCED", "FEARLESS",
+        "PEAK FORM", "UNTOUCHABLE", "PRIME MODE", "LEVELS", "LEGEND", "ICE IN VEINS",
+    ],
+    "roast": [
+        "ROASTED", "COOKED", "VIOLATION", "SAVAGE", "NO MERCY", "EXPOSED", "HUMBLED",
+        "CHECKMATE", "BODYBAG", "GAME OVER", "CRITICAL HIT", "TOO BRUTAL", "KHATAM",
+        "CAUGHT IN 4K", "OUTPLAYED", "PACKED UP", "NO RECOVERY",
+    ],
+    "gaming": [
+        "CLUTCH", "CRACKED", "INSANE", "CLEAN", "DOMINATED", "PRO MOVE", "GOD MODE",
+        "CHAOS", "SQUAD WIPE", "HACKER AIM", "HEADSHOT", "MVP", "UNREAL AIM", "DIFFED",
+    ],
+    "clash": [
+        "COOKED", "HEATED", "NO WAY", "SAVAGE", "INTENSE", "COLD REPLY", "SHUT DOWN",
+        "WAR MODE", "RAW TRUTH", "NO FILTER",
+    ],
 }
 
 
@@ -139,9 +254,30 @@ def _get_plugin_config():
     return defaults
 
 
-def _pick_unique_bgm_query(edit_type, seed):
-    pool = BGM_POOLS.get(edit_type) or BGM_POOLS["vlog"]
+def _pick_unique_bgm_query(edit_type, subtype, seed):
+    if subtype in ("emo_wholesome_heart_drop", "emo_brotherhood_story", "emo_moody_tribute", "emo_broken_silence", "switch_banter_aesthetic"):
+        pool = BGM_POOLS["aesthetic"]
+    elif subtype in ("roast_red_ribbon_drop", "roast_double_meaning"):
+        pool = BGM_POOLS["roast"]
+    elif subtype in ("aura_minimal_glow", "aura_skull_freeze", "aura_mindset_statement", "aura_velocity_ramp", "aura_crimson_devil", "aura_ice_cold_drop", "switch_attitude_drop"):
+        pool = BGM_POOLS["aura"]
+    elif subtype in ("gaming_stacked_comeback", "gaming_esports_montage", "gaming_clutch_skull"):
+        pool = BGM_POOLS["gaming"]
+    elif subtype in ("comedy_letterbox_classic", "comedy_letterbox_lyric", "comedy_red_ribbon", "comedy_meme_pop", "gaming_lobby_troll"):
+        pool = BGM_POOLS["funny"]
+    else:
+        pool = BGM_POOLS.get(edit_type) or BGM_POOLS["vlog"]
     return pool[abs(int(seed)) % len(pool)]
+
+
+def _pick_sfx_query(subtype, seed):
+    if subtype in ("comedy_letterbox_classic", "comedy_letterbox_lyric", "comedy_red_ribbon", "comedy_meme_pop", "gaming_lobby_troll", "switch_banter_aesthetic"):
+        pool = SFX_POOLS["laugh"]
+        return pool[abs(int(seed)) % len(pool)], "laugh"
+    if subtype in ("roast_red_ribbon_drop", "roast_double_meaning", "aura_minimal_glow", "aura_skull_freeze", "aura_velocity_ramp", "aura_crimson_devil", "aura_ice_cold_drop", "gaming_stacked_comeback", "gaming_clutch_skull", "switch_attitude_drop"):
+        pool = SFX_POOLS["boom"]
+        return pool[abs(int(seed)) % len(pool)], "boom"
+    return "", "none"
 
 
 def _devanagari_to_roman(text):
@@ -292,11 +428,6 @@ def _words_from_segments(segments):
 
 
 def _gemini_transcribe_clip_audio(audio_path, caption_lang="hinglish"):
-    """
-    HIGH-NOISE GAMER AUDIO RESCUE:
-    When loud GTA/BGMI game noise makes Whisper miss Hindi speech, Gemini 2.5 Flash listens
-    directly to the clip audio and outputs accurate timestamped Hinglish/English phrases!
-    """
     if not gemini_client or not audio_path or not os.path.exists(audio_path):
         return "", []
     try:
@@ -377,16 +508,16 @@ def _gemini_direct_audio_scan(audio_path, audience_signals, style_pref, custom_p
 
         user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION: {custom_prompt}\n" if custom_prompt else ""
         prompt = f"""
-        Listen to this entire audio and find ALL genuine 9/10 or 10/10 VIRAL REELS / SHORTS moments (14-25s each, score 86-100).
+        Listen to this entire audio and find ALL genuine 9/10 or 10/10 VIRAL INSTAGRAM REELS moments (14-26s each, score 86-100).
         {user_rule}
         Video Title: "{audience_signals.get('video_title', '')}"
         YouTube Most-Replayed Spikes (sec): {audience_signals.get('heatmap_spikes', [])}
-        Style Preference: "{style_pref}" (if "auto", choose exact natural style: "vlog", "aesthetic", "gaming", "funny", "roast", "aura", "clash", "drama", "informative").
-        CRITICAL: Emotional / charity / storytelling / vlog moments MUST be "vlog" or "aesthetic" with impact_stamp ""!
+        Style Preference: "{style_pref}" (if "auto", choose exact natural style + exact IG sub-type!).
+        Available edit_subtype values: {json.dumps(ALL_SUBTYPES)}
         REJECT intros, sponsor ads, setup filler, and outros!
 
         Return ONLY valid JSON array:
-        [{{"start": 42, "end": 62, "score": 92, "edit_type": "vlog", "layout_mode": "vertical_full", "focus_x": "center", "title_text": "DREAM RESTAURANT REVEAL", "impact_stamp": "", "peak_sec": 10}}]
+        [{{"start": 42, "end": 62, "score": 92, "edit_type": "roast", "edit_subtype": "roast_red_ribbon_drop", "layout_mode": "vertical_full", "title_text": "ALWAYS READY TO ROAST THEM", "impact_stamp": "COOKED", "overlay_emoji": "skull", "peak_sec": 12}}]
         """
         for gm in ("gemini-2.5-flash", "gemini-2.0-flash"):
             try:
@@ -413,13 +544,12 @@ def _local_faster_whisper_transcribe(audio_path, caption_lang="hinglish", fast_s
             model = WhisperModel(model_size, device="cpu", compute_type="int8")
             _local_whisper_models[model_size] = model
 
-        # Force language="hi" for Hinglish so mixed Hindi+English NEVER turns into broken English!
         lang_arg = "en" if caption_lang == "en" else "hi"
         segments, info = model.transcribe(
             audio_path,
             language=lang_arg,
             word_timestamps=(not fast_scan),
-            vad_filter=False,  # Keep FALSE so loud gaming audio never drops Hindi commentary!
+            vad_filter=False,
             condition_on_previous_text=False,
             beam_size=(1 if fast_scan else 2),
         )
@@ -454,11 +584,6 @@ def _local_faster_whisper_transcribe(audio_path, caption_lang="hinglish", fast_s
 
 
 def _proofread_and_format_words(words, full_context, mode="hinglish", context_hint=""):
-    """
-    Converts Devanagari Hindi -> crisp natural Roman Hinglish (e.g. 'भाई रोक दे' -> 'Bhai rok de')
-    and Devanagari-spelled English -> clean English (e.g. 'आई नीड योर हेल्प' -> 'I need your help'),
-    while strictly preserving exact word count and timestamps!
-    """
     if not words:
         return words
     try:
@@ -471,15 +596,15 @@ def _proofread_and_format_words(words, full_context, mode="hinglish", context_hi
             else:
                 lang_rule = (
                     "Convert every item into natural Roman Hinglish (ASCII A-Z only): "
-                    "write Hindi words in crisp Roman Hindi (e.g. 'क्या'->'Kya', 'बात'->'baat', 'भाई'->'bhai', 'रोक'->'rok'), "
-                    "and write English words spelled in Hindi back into real English (e.g. 'आई'->'I', 'नीड'->'need', 'हेल्प'->'help', 'ट्रेन'->'train', 'स्पॉन्सर'->'sponsor'). "
+                    "write Hindi words in crisp Roman Hindi (e.g. 'क्या'->'Kya', 'बात'->'baat', 'भाई'->'bhai'), "
+                    "and write English words spelled in Hindi back into real English (e.g. 'आई'->'I', 'नीड'->'need', 'हेल्प'->'help'). "
                     "DO NOT translate Hindi sentences into English!"
                 )
 
             prompt = f"""
             You are an expert Indian Hinglish caption formatter. {lang_rule}
             Video Topic Hint: "{context_hint}"
-            CRITICAL: Return ONLY a valid JSON array of strings of the EXACT SAME LENGTH ({len(chunk)} items). Do NOT merge or drop items!
+            CRITICAL: Return ONLY a valid JSON array of strings of the EXACT SAME LENGTH ({len(chunk)} items).
             Sentence Context: {full_context[:350]}
             Input Array: {json.dumps(chunk, ensure_ascii=False)}
             """
@@ -498,7 +623,7 @@ def _proofread_and_format_words(words, full_context, mode="hinglish", context_hi
         for idx, w in enumerate(words):
             if idx < len(fixed_all):
                 w["word"] = str(fixed_all[idx])
-        print(f"[MAG73 Captions] Formatted {len(words)} Hinglish/English words accurately.")
+        print(f"[MAG73 Captions] Formatted {len(words)} words accurately.")
     except Exception as e:
         print(f"[MAG73 Captions] Format warning: {e}")
     return words
@@ -508,7 +633,6 @@ def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hin
     audio_path = "temp_vocal_16k.mp3"
     bitrate = "24k" if fast_scan else "64k"
     try:
-        # Gentle vocal clarity filter (preserves Hindi voice cleanly even in loud GTA/BGMI streams!)
         subprocess.run(
             [
                 "ffmpeg", "-y", "-i", media_path,
@@ -535,7 +659,6 @@ def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hin
             "model": "whisper-large-v3-turbo",
             "response_format": "verbose_json",
             "timestamp_granularities[]": "word",
-            # KEY FIX: Force language="hi" for Hinglish so Hindi NEVER gets mistranslated to broken English!
             "language": "en" if caption_lang == "en" else "hi",
         }
         try:
@@ -559,7 +682,6 @@ def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hin
         except Exception as e:
             print(f"[MAG73 Audio] Groq Whisper skipped ({e})")
 
-    # For short clips (<=45s) where loud game audio caused Whisper to return <12 words, rescue via Gemini Audio!
     dur_check = _get_media_duration_sec(audio_path)
     if (not fast_scan) and len(words) < 12 and dur_check <= 45.0:
         g_txt, g_words = _gemini_transcribe_clip_audio(audio_path, caption_lang=caption_lang)
@@ -567,7 +689,6 @@ def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hin
             words = g_words
             text = g_txt
 
-    # Offline fallback only if still empty and short enough
     if len(words) < 5 and ((not fast_scan) or dur_check <= 240.0):
         fw_text, fw_words = _local_faster_whisper_transcribe(
             audio_path, caption_lang=caption_lang, fast_scan=fast_scan
@@ -593,15 +714,17 @@ def extract_accurate_transcript(media_path="source_video.mp4", caption_lang="hin
 
 def refine_clip_metadata(clip_data, segment_transcript, word_timestamps):
     """
-    Verifies on the EXACT 0.000s trimmed clip:
-    1. True mood (`edit_type`): ensures emotional/charity/story clips stay `vlog`/`aesthetic` (NO SAVAGE/LETHAL/B&W!).
-    2. Exact matching Hook Title (never generic 'HIGHLIGHT MOMENT!').
-    3. Exact climax `peak_sec` and contextual stamp ONLY if hype/action/roast.
+    Runs on the 0.000s trimmed clip to lock in:
+    - Exact IG Reel Sub-Type (`edit_subtype`) matching the TRUE dialogue vibe
+    - Persistent Instagram Story Hook (`title_text`, 3-8 words like "QAZI IS ALWAYS READY TO ROAST THEM")
+    - Exact climax drop second (`peak_sec`)
+    - Matching Reaction Emoji PNG (`overlay_emoji`) + Contextual Impact Stamp
     """
     plugin_cfg = _get_plugin_config()
     banner_on = bool(plugin_cfg.get("banner_enabled", True))
     style_pref = os.getenv("EDIT_STYLE", "auto").strip().lower()
     edit_type = str(clip_data.get("edit_type", "vlog")).lower()
+    subtype = str(clip_data.get("edit_subtype", "")).strip().lower()
     dur = max(10.0, float(clip_data.get("end", 20.0)) - float(clip_data.get("start", 0.0)))
     run_num = int(os.getenv("GITHUB_RUN_NUMBER", "1") or "1")
     seed = run_num + int(clip_data.get("orig_start", 0)) + int(clip_data.get("clip_index", 0)) * 7
@@ -612,23 +735,28 @@ def refine_clip_metadata(clip_data, segment_transcript, word_timestamps):
     seg_txt = (segment_transcript or "").strip()
     if len(seg_txt) >= 12:
         try:
+            allowed_subtypes = SUBTYPES_BY_STYLE.get(style_pref, ALL_SUBTYPES) if (style_pref in VALID_STYLES and style_pref != "auto") else ALL_SUBTYPES
             prompt = f"""
-            Analyze this EXACT 0.0s-to-{dur:.1f}s clip transcript and return ONLY a JSON object:
-            - "edit_type": Pick the TRUE mood of this clip from ["vlog", "aesthetic", "gaming", "funny", "roast", "aura", "clash", "drama", "informative", "clean"].
-              CRITICAL: If someone is asking for help, sharing an emotional/inspiring story, charity, medals, or calm vlog -> MUST be "vlog" or "aesthetic" (NEVER "roast" or "aura"!).
-              If it is chaotic GTA/BGMI/gaming stream shouting/chasing/clutches -> "gaming", "funny", or "clash".
-            - "title_text": Punchy 3-5 word UPPERCASE ASCII hook strictly about THIS transcript (e.g. "HELPING A NATIONAL CHAMPION", "TRAIN NAHI RUK RAHI BHAI!").
-            - "peak_sec": Exact float second between {max(3.0, dur*0.28):.1f} and {max(5.0, dur-2.2):.1f} where the biggest reaction/payoff happens.
-            - "impact_stamp": Crisp 1-2 word UPPERCASE stamp ONLY for gaming/roast/aura/clash (e.g. "CHAOS", "CLUTCH", "COOKED", "UNPLAYABLE"). MUST be "" (empty string) for vlog, aesthetic, drama, informative, clean!
+            You are a VIRAL INSTAGRAM REELS EDITOR. Analyze this EXACT 0.0s-to-{dur:.1f}s clip transcript and return ONLY a JSON object:
+            - "edit_type": One of ["roast", "aura", "aesthetic", "funny", "gaming", "vlog", "drama", "clash", "informative", "clean"].
+              CRITICAL: Emotional/charity/respect/brotherhood/storytelling -> "aesthetic" or "vlog" (NEVER "roast"/"aura"!).
+              Funny banter/reality comedy/trolling -> "funny". Savage comeback/cold badass line -> "roast" or "aura".
+            - "edit_subtype": Pick the EXACT best Instagram Reel template from: {json.dumps(allowed_subtypes)}
+            - "title_text": Authentic Instagram Reel narrative hook (3-7 ASCII words, UPPERCASE or Title Case feel, strictly describing THIS clip! Examples: "ALWAYS READY TO ROAST THEM", "EVEN AFTER FIGHTING HE STOOD BY HIM", "ONLY LEGENDS UNDERSTAND THIS CONVO", "HE TALKED ABOUT HIS WIFE", "WAIT FOR THE END").
+            - "peak_sec": Exact float second between {max(4.0, dur*0.35):.1f} and {max(5.5, dur-2.8):.1f} where the punchline/roast/drop/emotional close-up hits.
+            - "overlay_emoji": Choose ONE from ["skull", "heart", "cold", "fire", "laugh", "crown", "eyes", "broken_heart", "mindblown", "none"] matching the exact mood!
+            - "impact_stamp": Crisp 1-2 word UPPERCASE stamp ONLY for roast/aura/gaming/clash (e.g. "COOKED", "ICE COLD", "CLUTCH", "UNPLAYABLE"), else "".
 
             Video Title: "{clip_data.get('video_title', '')}"
-            Current Style Hint: "{edit_type}" (User override: "{style_pref}")
+            User Style Override: "{style_pref}"
+            Current Draft Subtype: "{subtype}"
             Exact Clip Transcript:
             {seg_txt[:1800]}
 
-            Return ONLY JSON: {{"edit_type": "vlog", "title_text": "...", "peak_sec": 10.5, "impact_stamp": ""}}
+            Return ONLY valid JSON:
+            {{"edit_type": "roast", "edit_subtype": "roast_red_ribbon_drop", "title_text": "ALWAYS READY TO ROAST THEM", "peak_sec": 12.4, "overlay_emoji": "skull", "impact_stamp": "COOKED"}}
             """
-            raw = (_call_groq(prompt, temperature=0.2) or "").strip()
+            raw = (_call_groq(prompt, temperature=0.25) or "").strip()
             m = re.search(r"\{.*\}", raw, re.DOTALL)
             if m:
                 parsed = json.loads(m.group(0))
@@ -637,18 +765,24 @@ def refine_clip_metadata(clip_data, segment_transcript, word_timestamps):
                     if style_pref == "auto" and ai_et in VALID_STYLES:
                         edit_type = ai_et
                         clip_data["edit_type"] = edit_type
-                        if bool(plugin_cfg.get("bgm_enabled", True)) and edit_type != "clean":
-                            clip_data["bgm_query"] = _pick_unique_bgm_query(edit_type, seed)
-                        clip_data["sfx_query"] = DEFAULT_SFX_BY_STYLE.get(edit_type, "") if bool(plugin_cfg.get("sfx_enabled", True)) else ""
+
+                    ai_sub = str(parsed.get("edit_subtype", "")).strip().lower()
+                    if ai_sub in allowed_subtypes:
+                        subtype = ai_sub
+                        clip_data["edit_subtype"] = subtype
 
                     if banner_on and edit_type != "clean":
-                        t = re.sub(r"[^A-Za-z0-9 !?@#.-]", "", str(parsed.get("title_text", ""))).strip().upper()
-                        if 2 <= len(t.split()) <= 6:
+                        t = re.sub(r"[^A-Za-z0-9 !?@#.,-]", "", str(parsed.get("title_text", ""))).strip().upper()
+                        if 2 <= len(t.split()) <= 9:
                             clip_data["title_text"] = t
 
                     pk = float(parsed.get("peak_sec", 0))
-                    if 2.5 <= pk <= dur - 2.0:
+                    if 3.5 <= pk <= dur - 2.2:
                         clip_data["peak_sec"] = round(pk, 2)
+
+                    em = str(parsed.get("overlay_emoji", "")).strip().lower()
+                    if em in ("skull", "heart", "cold", "fire", "laugh", "crown", "eyes", "broken_heart", "mindblown", "none"):
+                        clip_data["overlay_emoji"] = em
 
                     st = re.sub(r"[^A-Za-z0-9 !?+-]", "", str(parsed.get("impact_stamp", ""))).strip().upper()
                     if edit_type in HYPE_STAMP_POOLS and st and "1000" not in st and len(st.split()) <= 2:
@@ -658,8 +792,29 @@ def refine_clip_metadata(clip_data, segment_transcript, word_timestamps):
         except Exception as e:
             print(f"[MAG73 Meta] Refine warning: {e}")
 
-    # Strictly forbid stamps on vlog/aesthetic/drama/informative/clean!
-    if edit_type not in HYPE_STAMP_POOLS:
+    # Guarantee valid subtype + matched BGM/SFX/Emoji
+    if subtype not in ALL_SUBTYPES:
+        pool_sub = SUBTYPES_BY_STYLE.get(edit_type, SUBTYPES_BY_STYLE["vlog"])
+        subtype = pool_sub[seed % len(pool_sub)]
+        clip_data["edit_subtype"] = subtype
+
+    if not clip_data.get("overlay_emoji"):
+        clip_data["overlay_emoji"] = DEFAULT_EMOJI_BY_SUBTYPE.get(subtype, "none")
+
+    if bool(plugin_cfg.get("bgm_enabled", True)) and edit_type != "clean":
+        clip_data["bgm_query"] = _pick_unique_bgm_query(edit_type, subtype, seed)
+    else:
+        clip_data["bgm_query"] = ""
+
+    if bool(plugin_cfg.get("sfx_enabled", True)) and edit_type != "clean":
+        sfx_q, sfx_kind = _pick_sfx_query(subtype, seed)
+        clip_data["sfx_query"] = sfx_q
+        clip_data["sfx_kind"] = sfx_kind
+    else:
+        clip_data["sfx_query"] = ""
+        clip_data["sfx_kind"] = "none"
+
+    if edit_type not in HYPE_STAMP_POOLS or subtype.startswith("emo_") or subtype.startswith("comedy_"):
         clip_data["impact_stamp"] = ""
     else:
         cur_stamp = str(clip_data.get("impact_stamp", "")).strip().upper()
@@ -668,8 +823,8 @@ def refine_clip_metadata(clip_data, segment_transcript, word_timestamps):
             clip_data["impact_stamp"] = pool[seed % len(pool)]
 
     print(
-        f"[MAG73 Meta] Style={edit_type} | Hook='{clip_data.get('title_text','')}' | "
-        f"Peak={clip_data.get('peak_sec')}s | Stamp='{clip_data.get('impact_stamp','')}'"
+        f"[MAG73 IG Director] Style={edit_type} | Subtype={subtype} | Emoji={clip_data.get('overlay_emoji')} | "
+        f"Hook='{clip_data.get('title_text','')}' | Peak={clip_data.get('peak_sec')}s | Stamp='{clip_data.get('impact_stamp','')}'"
     )
     return clip_data
 
@@ -735,9 +890,9 @@ def _deduplicate_clips(clips, max_dur, words):
         if not isinstance(c, dict):
             continue
         s = max(0.0, float(c.get("start", 0)))
-        e = min(max_dur, float(c.get("end", s + 18)))
-        if e - s < 11.0:
-            e = min(max_dur, s + 17.0)
+        e = min(max_dur, float(c.get("end", s + 19)))
+        if e - s < 12.0:
+            e = min(max_dur, s + 18.0)
         if e - s > 27.0:
             e = s + 25.0
         c["start"] = int(round(s))
@@ -789,12 +944,14 @@ def _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_
                 "edit_type": fallback_style,
                 "layout_mode": "vertical_full",
                 "focus_x": "center",
-                "title_text": "" if not banner_enabled else "CRAZY MOMENT!",
-                "peak_sec": int(min(10.0, max(3.5, end_s * 0.5))),
+                "title_text": "" if not banner_enabled else "WAIT FOR THE END",
+                "peak_sec": int(min(12.0, max(5.0, end_s * 0.6))),
             }
         ]
 
+    # Distribute DIFFERENT sub-types across every clip so NO two clips look alike!
     style_counters = {}
+    used_subtypes = set()
     for idx, c in enumerate(clips):
         et = str(c.get("edit_type", "vlog")).strip().lower()
         if style_pref in VALID_STYLES and style_pref != "auto":
@@ -806,27 +963,41 @@ def _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_
 
         count_for_style = style_counters.get(et, 0)
         style_counters[et] = count_for_style + 1
+        mix_seed = run_seed + idx * 5 + count_for_style * 3
 
-        mix_seed = run_seed + idx * 3 + count_for_style
+        pool_sub = SUBTYPES_BY_STYLE.get(et, SUBTYPES_BY_STYLE["vlog"])
+        proposed_sub = str(c.get("edit_subtype", "")).strip().lower()
+        if proposed_sub not in pool_sub or proposed_sub in used_subtypes:
+            # Pick an unused sub-type from this category's pool for 100% variety!
+            unused = [s for s in pool_sub if s not in used_subtypes]
+            proposed_sub = unused[mix_seed % len(unused)] if unused else pool_sub[mix_seed % len(pool_sub)]
+        c["edit_subtype"] = proposed_sub
+        used_subtypes.add(proposed_sub)
+
         c["variant_id"] = mix_seed % 5
         c["caption_style"] = CAPTION_STYLES[mix_seed % len(CAPTION_STYLES)]
+        if not c.get("overlay_emoji"):
+            c["overlay_emoji"] = DEFAULT_EMOJI_BY_SUBTYPE.get(proposed_sub, "none")
 
         if bgm_enabled and et != "clean":
-            c["bgm_query"] = _pick_unique_bgm_query(et, mix_seed)
+            c["bgm_query"] = _pick_unique_bgm_query(et, proposed_sub, mix_seed)
         else:
             c["bgm_query"] = ""
 
         if sfx_enabled and et != "clean":
-            c["sfx_query"] = DEFAULT_SFX_BY_STYLE.get(et, "")
+            sfx_q, sfx_kind = _pick_sfx_query(proposed_sub, mix_seed)
+            c["sfx_query"] = sfx_q
+            c["sfx_kind"] = sfx_kind
         else:
             c["sfx_query"] = ""
+            c["sfx_kind"] = "none"
 
         if not banner_enabled:
             c["title_text"] = ""
         elif not str(c.get("title_text", "")).strip() and et != "clean":
-            c["title_text"] = "WATCH THIS MOMENT!"
+            c["title_text"] = "WAIT FOR THIS MOMENT"
 
-        if et in HYPE_STAMP_POOLS:
+        if et in HYPE_STAMP_POOLS and not proposed_sub.startswith(("emo_", "comedy_")):
             st = str(c.get("impact_stamp", "")).strip().upper()
             if not st or "1000" in st:
                 pool = HYPE_STAMP_POOLS[et]
@@ -835,8 +1006,8 @@ def _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_
             c["impact_stamp"] = ""
 
     print(
-        f"[MAG73 Director] Approved {len(clips)} clip(s): "
-        f"{[(c['edit_type'], 'v'+str(c['variant_id']), c['caption_style']) for c in clips]}"
+        f"[MAG73 IG Director] Approved {len(clips)} diverse IG Reels: "
+        f"{[(c['edit_type'], c['edit_subtype'], c['overlay_emoji']) for c in clips]}"
     )
     return clips
 
@@ -877,25 +1048,26 @@ def run_fast_scan_council(audio_path, audience_signals, video_path=None, preload
 
     if len(transcript_text) < 40 and audience_signals.get("heatmap_spikes"):
         hm_clips = []
-        for sp in audience_signals["heatmap_spikes"][:6]:
+        for idx, sp in enumerate(audience_signals["heatmap_spikes"][:6]):
             st = max(0, int(sp) - 5)
             en = min(int(vid_dur), st + 22)
             hm_clips.append({
                 "start": st, "end": en, "score": 90,
-                "edit_type": "vlog", "layout_mode": "vertical_full",
+                "edit_type": "aura" if idx % 2 == 0 else "funny",
+                "layout_mode": "vertical_full",
                 "focus_x": "center", "title_text": "MOST REPLAYED MOMENT",
-                "impact_stamp": "", "peak_sec": 10,
+                "peak_sec": 12,
             })
         return _finalize_clip_list(hm_clips, vid_dur, word_timestamps, style_pref, plugin_cfg, video_title=video_title, is_live=False)
 
     user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION (OBEY STRICTLY): {custom_prompt}\n" if custom_prompt else ""
 
     prompt = f"""
-    You are a RUTHLESS, ELITE VIRAL REELS / SHORTS CURATOR (10M+ views standard).
+    You are a TOP VIRAL INSTAGRAM REELS CREATOR & CURATOR (10M+ views standard).
     {user_rule}
     Video Title: "{video_title}"
     Video Duration: {int(vid_dur)} seconds
-    User Style Preference: "{style_pref}" (if "auto", give EACH clip its exact natural style!)
+    User Style Preference: "{style_pref}" (if "auto", mix natural distinct IG Reel styles!)
 
     AUDIENCE VIRAL SIGNALS:
     - YouTube Most-Replayed Heatmap Spikes (sec): {audience_signals.get('heatmap_spikes', [])}
@@ -903,14 +1075,17 @@ def run_fast_scan_council(audio_path, audience_signals, video_path=None, preload
     TIMESTAMPED TRANSCRIPT ([Xs] seconds):
     {transcript_text[:22000]}
 
-    STRICT ELITE CURATION RULES:
+    STRICT RULES:
     1. Pick ALL genuine 9/10 or 10/10 VIRAL MOMENTS across the ENTIRE video (14-25s each, score 85-100).
-    2. HARD REJECT: sponsor ad reads, promo codes, boring setup filler, and outros ("like subscribe bye").
-    3. ACCURATE STYLE PER CLIP:
-       - Emotional / charity / inspiring / vlog storytelling -> "vlog" or "aesthetic" (impact_stamp MUST be "")!
-       - Gaming clutches / chaotic gameplay -> "gaming" or "funny".
-       - Savage insults / cold comebacks -> "roast" or "aura".
-    4. EXACT HOOK TITLE ("title_text"): Punchy 3-5 word uppercase ASCII hook strictly about THAT clip.
+    2. HARD REJECT: sponsor ad reads, promo codes, intros, setup filler, and outros ("like subscribe bye").
+    3. ASSIGN DISTINCT INSTAGRAM REEL SUB-TYPES ("edit_subtype") FROM THIS LIST:
+       - Roast/Aura: "roast_red_ribbon_drop", "roast_double_meaning", "aura_minimal_glow", "aura_skull_freeze", "aura_mindset_statement", "aura_velocity_ramp", "aura_crimson_devil", "aura_ice_cold_drop"
+       - Emotional/Vlog: "emo_brotherhood_story", "emo_wholesome_heart_drop", "emo_moody_tribute", "emo_broken_silence"
+       - Comedy/Meme: "comedy_letterbox_classic", "comedy_letterbox_lyric", "comedy_red_ribbon", "comedy_meme_pop"
+       - Gaming/Esports: "gaming_stacked_comeback", "gaming_esports_montage", "gaming_clutch_skull", "gaming_lobby_troll"
+       - Switch: "switch_banter_aesthetic", "switch_attitude_drop"
+    4. EXACT PERSISTENT IG HOOK ("title_text"): 3-7 uppercase ASCII words that frame the story (e.g. "ALWAYS READY TO ROAST THEM", "EVEN AFTER FIGHTING HE STOOD BY HIM").
+    5. "overlay_emoji": Pick one of ["skull", "heart", "cold", "fire", "laugh", "crown", "eyes", "broken_heart", "mindblown", "none"].
 
     Return ONLY valid JSON array:
     [
@@ -918,16 +1093,18 @@ def run_fast_scan_council(audio_path, audience_signals, video_path=None, preload
         "start": 42,
         "end": 62,
         "score": 93,
-        "edit_type": "vlog",
+        "edit_type": "roast",
+        "edit_subtype": "roast_red_ribbon_drop",
         "layout_mode": "vertical_full",
         "focus_x": "center",
-        "title_text": "HELPING A NATIONAL CHAMPION",
-        "impact_stamp": "",
-        "peak_sec": 10
+        "title_text": "ALWAYS READY TO ROAST THEM",
+        "impact_stamp": "COOKED",
+        "overlay_emoji": "skull",
+        "peak_sec": 12
       }}
     ]
     """
-    raw_out = _call_groq(prompt, temperature=0.22)
+    raw_out = _call_groq(prompt, temperature=0.25)
     raw_clips = _clean_json(raw_out)
     return _finalize_clip_list(raw_clips, vid_dur, word_timestamps, style_pref, plugin_cfg, video_title=video_title, is_live=False)
 
@@ -949,17 +1126,17 @@ def run_super_ai_council(video_path, audience_signals):
 
     user_rule = f"\nHIGHEST PRIORITY USER INSTRUCTION: {custom_prompt}\n" if custom_prompt else ""
     prompt = f"""
-    You are an ELITE VIRAL STREAM CLIPPER & REELS DIRECTOR.
+    You are an ELITE VIRAL STREAM CLIPPER & INSTAGRAM REELS DIRECTOR.
     {user_rule}
     Stream Title: "{video_title}"
     Captured Segment Duration: {int(vid_dur)}s
-    Style Preference: "{style_pref}" (if "auto", choose the exact best style from: "gaming", "funny", "aura", "roast", "clash", "vlog", "aesthetic")
+    Style Preference: "{style_pref}"
 
     Transcript:
     {transcript_text[:10000]}
 
     Pick the SINGLE best punchiest 14-24s highlight inside this captured live segment.
-    Return ONLY valid JSON array of 1 item with "start", "end", "score" (88), "edit_type", "layout_mode", "title_text" (3-5 uppercase ASCII words matching the spoken dialogue!), "impact_stamp" (1-2 words for gaming/roast/aura/clash, else ""), and "peak_sec".
+    Return ONLY valid JSON array of 1 item with "start", "end", "score" (88), "edit_type", "edit_subtype" (from {json.dumps(ALL_SUBTYPES)}), "layout_mode", "title_text" (3-6 uppercase ASCII words), "overlay_emoji", "impact_stamp", and "peak_sec".
     """
     raw_out = _call_groq(prompt, temperature=0.28)
     raw_clips = _clean_json(raw_out)
